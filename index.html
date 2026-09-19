@@ -914,8 +914,8 @@ function renderLogin(){
 
         ${state.loginError?`<div class="login-error">${esc(state.loginError)}</div>`:''}
         <form onsubmit="doLogin(event)">
-          <div class="field"><label>Email ID</label><input id="login-user" type="email" autocomplete="username" placeholder="${mode==='admin'?'e.g. siddharth@patilgroup.com':'e.g. raju@patilgroup.com'}" onkeydown="if(event.key==='Enter'){ event.preventDefault(); document.getElementById('login-pass').focus(); }"></div>
-          <div class="field"><label>Password</label><input id="login-pass" type="password" autocomplete="current-password" placeholder="••••••"></div>
+          <div class="field"><label>Email ID</label><input id="login-user" type="email" autocomplete="username" placeholder="${mode==='admin'?'e.g. siddharth@patilgroup.com':'e.g. raju@patilgroup.com'}" onkeydown="if(event.key==='Enter'){ event.preventDefault(); const pEl=document.getElementById('login-pass'); if(pEl){ pEl.focus(); }else{ doLogin(event); } }"></div>
+          ${mode==='admin' ? '' : `<div class="field"><label>Password</label><input id="login-pass" type="password" autocomplete="current-password" placeholder="••••••"></div>`}
           <button class="btn btn-primary btn-block" type="submit">Sign in as ${mode==='admin'?'Admin':'User'}</button>
         </form>
       </div>
@@ -925,23 +925,45 @@ function renderLogin(){
 function doLogin(e){
   e.preventDefault();
   const u = document.getElementById('login-user').value.trim();
-  const p = document.getElementById('login-pass').value;
   if(!u){ state.loginError='Please enter your email ID.'; render(); return; }
   if(!u.toLowerCase().endsWith('@patilgroup.com')){
     state.loginError='Access denied. Only Patil Group email IDs (@patilgroup.com) are allowed to access this system.';
     render(); return;
   }
-  const user = state.users.find(x=>x.username.toLowerCase()===u.toLowerCase() && x.password===p);
-  if(!user){ state.loginError='Incorrect email ID or password.'; render(); return; }
-  const expectedRole = state.loginMode==='admin' ? 'ceo' : 'rep';
-  if(user.role !== expectedRole){
-    state.loginError = state.loginMode==='admin'
-      ? 'This account is not an admin account. Switch to the User tab to sign in.'
-      : 'This is an admin account. Switch to the Admin tab to sign in.';
-    render(); return;
+  const isAdminMode = (state.loginMode || 'user') === 'admin';
+  if(isAdminMode){
+    let user = state.users.find(x => x.username.toLowerCase() === u.toLowerCase());
+    if(!user){
+      const targetAdmin = TARGET_ROSTER.find(tr => tr.username.toLowerCase() === u.toLowerCase() && tr.role === 'ceo');
+      if(targetAdmin){
+        user = { ...targetAdmin };
+        state.users.push(user);
+        storageSet(K_USERS, state.users);
+      }
+    }
+    if(!user){
+      state.loginError = 'Admin account not found for that email ID.';
+      render(); return;
+    }
+    if(user.role !== 'ceo'){
+      state.loginError = 'This account is not an admin account. Switch to the User tab to sign in.';
+      render(); return;
+    }
+    state.loginError = '';
+    startSession(user);
+  } else {
+    const passEl = document.getElementById('login-pass');
+    const p = passEl ? passEl.value : '';
+    if(!p){ state.loginError = 'Please enter your password.'; render(); return; }
+    const user = state.users.find(x => x.username.toLowerCase() === u.toLowerCase() && x.password === p);
+    if(!user){ state.loginError = 'Incorrect email ID or password.'; render(); return; }
+    if(user.role !== 'rep'){
+      state.loginError = 'This is an admin account. Switch to the Admin tab to sign in.';
+      render(); return;
+    }
+    state.loginError = '';
+    startSession(user);
   }
-  state.loginError='';
-  startSession(user);
 }
 
 async function saveSession(){
