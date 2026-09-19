@@ -3393,7 +3393,7 @@ function renderTeam(){
         <td>${esc(u.roleTitle || (u.role==='ceo'?'CEO / Manager':'Sales rep'))}</td>
         <td>${u.role==='ceo' ? '' : (u.mustChangePassword !== false ? 'Set by Admin' : 'Set by User')}</td>
         <td style="white-space:nowrap;">
-          ${u.role==='rep'?`<button class="link-btn" onclick="openChangePasswordModal('${u.username}')">Reset password</button> <button class="link-btn btn-danger" onclick="removeRep('${u.username}')">Remove</button> <button class="link-btn btn-danger" onclick="deleteUser('${u.username}')">Delete</button>`:''}
+          ${u.role==='rep'?`<div style="display:inline-flex;gap:12px;align-items:center;"><button class="link-btn" onclick="openChangePasswordModal('${u.username}')">Reset password</button><button class="link-btn btn-danger" onclick="removeRep('${u.username}')">Remove</button><button class="link-btn btn-danger" onclick="deleteUser('${u.username}')">Delete</button></div>`:''}
         </td></tr>`).join('')}
     </table></div>
   </div>
