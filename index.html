@@ -193,124 +193,56 @@ input[type="number"]{ -moz-appearance:textfield; appearance:textfield; }
 <div id="app"></div>
 
 <script>
-/* ================= STORAGE & GOOGLE APPS SCRIPT INTEGRATION ================= */
-const K_USERS='crm:users', K_ORDERS='crm:orders', K_COORD='crm:coordination', K_LOST='crm:lostorders', K_ACTIVITY='crm:activity', K_SEEDVER='crm:seedver';
-const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbzOSi0bHXK7n5dLnOwyar5B4FMYIt4tYcO2ERzVcCAgPsOyA36TtQboAGV6IDEmqQPA6A/exec';
-
-let cloudSyncStatus = 'idle'; // 'idle' | 'syncing' | 'synced' | 'error'
+/* ================= STORAGE ================= */
+const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbwUq60-IGxKcP3bLCxgugC6JF_QYRHLBgmCRURlZ6Sua_Xf1vQhQc5MPFcshqSmUA53dQ/exec';
+const K_USERS='crm:users', K_ORDERS='crm:orders', K_COORD='crm:coordination', K_LOST='crm:lostorders', K_ACTIVITY='crm:activity', K_SESSION='crm:session';
 
 async function storageGet(key){
-  // 1. Try fetching from Google Apps Script Web App
-  let cloudVal = null;
+  let localData = null;
   try {
-    const url = `${APPS_SCRIPT_URL}?action=get&key=${encodeURIComponent(key)}`;
+    const raw = localStorage.getItem(key);
+    if (raw) localData = JSON.parse(raw);
+  } catch(e) {}
+
+  try {
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 4000);
-    const res = await fetch(url, { signal: controller.signal });
+    const timeoutId = setTimeout(() => controller.abort(), 1500);
+    const fetchUrl = APPS_SCRIPT_URL + '?action=get&key=' + encodeURIComponent(key);
+    const response = await fetch(fetchUrl, { redirect: 'follow', signal: controller.signal });
     clearTimeout(timeoutId);
-    if(res.ok){
-      const data = await res.json();
-      if(data && data.success && data.value !== undefined){
-        cloudVal = typeof data.value === 'string' ? JSON.parse(data.value) : data.value;
-      } else if(data && data.data !== undefined) {
-        cloudVal = typeof data.data === 'string' ? JSON.parse(data.data) : data.data;
-      } else if(data && data[key] !== undefined) {
-        cloudVal = typeof data[key] === 'string' ? JSON.parse(data[key]) : data[key];
-      } else if(data && !data.error && !data.message) {
-        cloudVal = data;
+    if (response.ok) {
+      const result = await response.json();
+      const val = (result && result.value !== undefined) ? result.value : result;
+      if (val !== null && val !== undefined && val !== '') {
+        const parsed = (typeof val === 'string') ? JSON.parse(val) : val;
+        try { localStorage.setItem(key, JSON.stringify(parsed)); } catch(e) {}
+        return parsed;
       }
     }
   } catch(e) {
-    console.warn('Google Apps Script fetch fallback to local storage:', e.message);
+    // Timeout or fetch error fallback to localData
   }
 
-  if(cloudVal !== null && cloudVal !== undefined){
-    try { localStorage.setItem(key, JSON.stringify(cloudVal)); } catch(e){}
-    cloudSyncStatus = 'synced';
-    updateCloudSyncUI();
-    return cloudVal;
-  }
-
-  // 2. Fallback to localStorage / window.storage
-  try{
-    if(window.storage && window.storage.get){ const r = await window.storage.get(key, true); if(r) return JSON.parse(r.value); }
-  }catch(e){}
-  try{ const raw = localStorage.getItem(key); return raw ? JSON.parse(raw) : null; }
-  catch(e){ return null; }
+  return localData;
 }
 
 async function storageSet(key, val){
-  // 1. Instant save to local storage
-  try{
-    if(window.storage && window.storage.set){ await window.storage.set(key, JSON.stringify(val), true); }
-  }catch(e){}
-  try{ localStorage.setItem(key, JSON.stringify(val)); }
-  catch(e){ console.error('storage set failed', key, e); }
-
-  // 2. Sync to Google Apps Script Web App
-  cloudSyncStatus = 'syncing';
-  updateCloudSyncUI();
+  try {
+    localStorage.setItem(key, JSON.stringify(val));
+  } catch(e) {
+    console.error('localStorage set error', key, e);
+  }
 
   try {
-    const payload = JSON.stringify({
-      action: 'set',
-      key: key,
-      value: val,
-      data: val,
-      timestamp: new Date().toISOString()
-    });
-
-    // POST request with text/plain & no-cors mode for cross-origin Apps Script reliability
-    await fetch(APPS_SCRIPT_URL, {
+    const payload = JSON.stringify({ action: 'set', key: key, value: val });
+    fetch(APPS_SCRIPT_URL, {
       method: 'POST',
       mode: 'no-cors',
       headers: { 'Content-Type': 'text/plain;charset=utf-8' },
       body: payload
-    });
-
-    // Also attempt GET URL sync for lightweight items as fallback
-    if(typeof val === 'string' || (Array.isArray(val) && val.length < 50)) {
-      const getUrl = `${APPS_SCRIPT_URL}?action=set&key=${encodeURIComponent(key)}&value=${encodeURIComponent(JSON.stringify(val))}`;
-      fetch(getUrl, { mode: 'no-cors' }).catch(()=>{});
-    }
-
-    cloudSyncStatus = 'synced';
-    updateCloudSyncUI();
+    }).catch(err => console.warn('Google Apps Script sync error:', err));
   } catch(e) {
-    console.error('Google Apps Script sync warning:', e);
-    cloudSyncStatus = 'error';
-    updateCloudSyncUI();
-  }
-}
-
-function updateCloudSyncUI(){
-  const el = document.getElementById('cloud-sync-badge');
-  if(!el) return;
-  if(cloudSyncStatus === 'syncing'){
-    el.innerHTML = '<span style="color:#f59e0b;display:inline-flex;align-items:center;gap:4px;">● Syncing to Google Script...</span>';
-  } else if(cloudSyncStatus === 'synced'){
-    el.innerHTML = '<span style="color:#10b981;display:inline-flex;align-items:center;gap:4px;">✓ Apps Script Synced</span>';
-  } else if(cloudSyncStatus === 'error'){
-    el.innerHTML = '<span style="color:#ef4444;display:inline-flex;align-items:center;gap:4px;">⚠ Local Storage (Apps Script offline)</span>';
-  } else {
-    el.innerHTML = '<span style="color:#60a5fa;display:inline-flex;align-items:center;gap:4px;">☁ Apps Script Connected</span>';
-  }
-}
-
-async function syncAllToAppsScript(){
-  cloudSyncStatus = 'syncing';
-  updateCloudSyncUI();
-  try {
-    await Promise.all([
-      storageSet(K_USERS, state.users),
-      storageSet(K_ORDERS, state.orders),
-      storageSet(K_COORD, state.coordination),
-      storageSet(K_LOST, state.lostOrders),
-      storageSet(K_ACTIVITY, state.activity)
-    ]);
-    alert('Successfully synced all CRM data to Google Apps Script cloud!');
-  } catch(e) {
-    alert('Data saved locally. Apps Script sync alert: ' + e.message);
+    console.warn('Google Apps Script storageSet warning:', key, e);
   }
 }
 
@@ -578,18 +510,29 @@ function activeActionType(order){
    orders — almost certainly leftover test entries, not real logged deals), it force-refreshes the
    demo set once. Past that threshold, it assumes the data is real and never touches it again. */
 const SEED_VERSION = 'real-data-2026-09-09-force';
-/* K_SEEDVER is defined in the storage section */
+const K_SEEDVER = 'crm:seedVersion';
 
 /* ================= SEED ================= */
+const TARGET_ROSTER = [
+  {username:'siddharth@patilgroup.com', password:'siddharth123', role:'ceo', name:'siddharth Sharma', roleTitle:'Ceo'},
+  {username:'vitrang@patilgroup.com', password:'vitrang123', role:'ceo', name:'Vitrang G Sompura', roleTitle:'Head Of Precast'},
+  {username:'francisyakobu@patilgroup.com', password:'francis123', role:'ceo', name:'Francis Yakobu K', roleTitle:'Sales Manager'},
+  {username:'saurabh@patilgroup.com', password:'saurabh123', role:'rep', name:'Saurabh Saumya', roleTitle:'Regional Manager', mustChangePassword:true},
+  {username:'raju@patilgroup.com', password:'raju123', role:'rep', name:'GRK Raju', roleTitle:'Regional Manager', mustChangePassword:true},
+  {username:'rahul@patilgroup.com', password:'rahul123', role:'rep', name:'Rahul', roleTitle:'Engineer Trainee', mustChangePassword:true},
+  {username:'ram@patilgroup.com', password:'ram123', role:'rep', name:'Ramchandra Siwal', roleTitle:'Engineer Trainee', mustChangePassword:true}
+];
+
 function seedIfEmpty(){
   if(state.users.length===0){
     state.users = [
-      {username:'siddharth', password:'siddharth123', role:'ceo', name:'Siddharth (CEO)'},
-      {username:'vitrang', password:'vitrang123', role:'ceo', name:'Vitrang (Head)'},
-      {username:'francis', password:'francis123', role:'ceo', name:'Francis (Manager)'},
-      {username:'raju', password:'raju123', role:'rep', name:'GRK Raju'},
-      {username:'saurabh', password:'saurabh123', role:'rep', name:'Saurabh Samya'},
-      {username:'rohit', password:'rohit123', role:'rep', name:'Rohit Gurjar'}
+      {username:'siddharth@patilgroup.com', password:'siddharth123', role:'ceo', name:'siddharth Sharma', roleTitle:'Ceo'},
+      {username:'vitrang@patilgroup.com', password:'vitrang123', role:'ceo', name:'Vitrang G Sompura', roleTitle:'Head Of Precast'},
+      {username:'francisyakobu@patilgroup.com', password:'francis123', role:'ceo', name:'Francis Yakobu K', roleTitle:'Sales Manager'},
+      {username:'saurabh@patilgroup.com', password:'saurabh123', role:'rep', name:'Saurabh Saumya', roleTitle:'Regional Manager', mustChangePassword:true},
+      {username:'raju@patilgroup.com', password:'raju123', role:'rep', name:'GRK Raju', roleTitle:'Regional Manager', mustChangePassword:true},
+      {username:'rahul@patilgroup.com', password:'rahul123', role:'rep', name:'Rahul', roleTitle:'Engineer Trainee', mustChangePassword:true},
+      {username:'ram@patilgroup.com', password:'ram123', role:'rep', name:'Ramchandra Siwal', roleTitle:'Engineer Trainee', mustChangePassword:true}
     ];
     storageSet(K_USERS, state.users);
   }
@@ -614,12 +557,13 @@ async function runSeed(){
   // are never deal owners; wherever the source data logged a deal under one of them, ownership was
   // reassigned round-robin across the three reps (noted inline in that deal's Next Action text).
   state.users = [
-    {username:'siddharth', password:'siddharth123', role:'ceo', name:'Siddharth (CEO)'},
-    {username:'vitrang', password:'vitrang123', role:'ceo', name:'Vitrang (Head)'},
-    {username:'francis', password:'francis123', role:'ceo', name:'Francis (Manager)'},
-    {username:'raju', password:'raju123', role:'rep', name:'GRK Raju'},
-    {username:'saurabh', password:'saurabh123', role:'rep', name:'Saurabh Samya'},
-    {username:'rohit', password:'rohit123', role:'rep', name:'Rohit Gurjar'}
+    {username:'siddharth@patilgroup.com', password:'siddharth123', role:'ceo', name:'siddharth Sharma', roleTitle:'Ceo'},
+    {username:'vitrang@patilgroup.com', password:'vitrang123', role:'ceo', name:'Vitrang G Sompura', roleTitle:'Head Of Precast'},
+    {username:'francisyakobu@patilgroup.com', password:'francis123', role:'ceo', name:'Francis Yakobu K', roleTitle:'Sales Manager'},
+    {username:'saurabh@patilgroup.com', password:'saurabh123', role:'rep', name:'Saurabh Saumya', roleTitle:'Regional Manager', mustChangePassword:true},
+    {username:'raju@patilgroup.com', password:'raju123', role:'rep', name:'GRK Raju', roleTitle:'Regional Manager', mustChangePassword:true},
+    {username:'rahul@patilgroup.com', password:'rahul123', role:'rep', name:'Rahul', roleTitle:'Engineer Trainee', mustChangePassword:true},
+    {username:'ram@patilgroup.com', password:'ram123', role:'rep', name:'Ramchandra Siwal', roleTitle:'Engineer Trainee', mustChangePassword:true}
   ];
   await storageSet(K_USERS, state.users);
 
@@ -970,24 +914,10 @@ function renderLogin(){
 
         ${state.loginError?`<div class="login-error">${esc(state.loginError)}</div>`:''}
         <form onsubmit="doLogin(event)">
-          <div class="field"><label>Username</label><input id="login-user" autocomplete="username" placeholder="${mode==='admin'?'e.g. siddharth':'e.g. raju'}" onkeydown="if(event.key==='Enter'){ event.preventDefault(); document.getElementById('login-pass').focus(); }"></div>
+          <div class="field"><label>Email ID</label><input id="login-user" type="email" autocomplete="username" placeholder="${mode==='admin'?'e.g. siddharth@patilgroup.com':'e.g. raju@patilgroup.com'}" onkeydown="if(event.key==='Enter'){ event.preventDefault(); document.getElementById('login-pass').focus(); }"></div>
           <div class="field"><label>Password</label><input id="login-pass" type="password" autocomplete="current-password" placeholder="••••••"></div>
           <button class="btn btn-primary btn-block" type="submit">Sign in as ${mode==='admin'?'Admin':'User'}</button>
         </form>
-
-        <div class="login-divider">or</div>
-        <button type="button" class="btn btn-block new-user-btn" onclick="goToSignup()">+ New user — create an account</button>
-
-        <div class="demo-box">
-          <b>Logins</b><br>
-          CEO — siddharth / siddharth123<br>
-          Head — vitrang / vitrang123<br>
-          Manager — francis / francis123<br>
-          Sales rep — raju / raju123<br>
-          Sales rep — saurabh / saurabh123<br>
-          Sales rep — rohit / rohit123<br>
-          <span style="opacity:.8;font-family:var(--font-body);">Admins can add more reps under the Team tab, or new users can self-register above.</span>
-        </div>
       </div>
     </div>
   </div>`;
@@ -996,8 +926,13 @@ function doLogin(e){
   e.preventDefault();
   const u = document.getElementById('login-user').value.trim();
   const p = document.getElementById('login-pass').value;
+  if(!u){ state.loginError='Please enter your email ID.'; render(); return; }
+  if(!u.toLowerCase().endsWith('@patilgroup.com')){
+    state.loginError='Access denied. Only Patil Group email IDs (@patilgroup.com) are allowed to access this system.';
+    render(); return;
+  }
   const user = state.users.find(x=>x.username.toLowerCase()===u.toLowerCase() && x.password===p);
-  if(!user){ state.loginError='Incorrect username or password.'; render(); return; }
+  if(!user){ state.loginError='Incorrect email ID or password.'; render(); return; }
   const expectedRole = state.loginMode==='admin' ? 'ceo' : 'rep';
   if(user.role !== expectedRole){
     state.loginError = state.loginMode==='admin'
@@ -1008,13 +943,30 @@ function doLogin(e){
   state.loginError='';
   startSession(user);
 }
-function startSession(user){
-  state.currentUser=user; state.topTab=(user.role==='ceo'?'summary':'mypage'); state.activeTab='dashboard'; state.viewingAsRep=null; render();
+
+async function saveSession(){
+  if(state.currentUser){
+    await storageSet(K_SESSION, {
+      username: state.currentUser.username,
+      topTab: state.topTab,
+      activeTab: state.activeTab,
+      viewingAsRep: state.viewingAsRep,
+      dashboardSubTab: state.dashboardSubTab
+    });
+  } else {
+    await storageSet(K_SESSION, null);
+  }
+}
+
+async function startSession(user){
+  state.currentUser=user; state.topTab=(user.role==='ceo'?'summary':'mypage'); state.activeTab='dashboard'; state.viewingAsRep=null;
+  await saveSession();
+  render();
   pingActivity();
   if(window.__pingTimer) clearInterval(window.__pingTimer);
   window.__pingTimer = setInterval(pingActivity, 5*60*1000);
 }
-function doLogout(){ state.currentUser=null; state.viewingAsRep=null; state.topTab='mypage'; state.authView='login'; state.loginMode='user'; if(window.__pingTimer) clearInterval(window.__pingTimer); render(); }
+async function doLogout(){ state.currentUser=null; state.viewingAsRep=null; state.topTab='mypage'; state.authView='login'; state.loginMode='user'; if(window.__pingTimer) clearInterval(window.__pingTimer); await saveSession(); render(); }
 
 /* ================= NEW USER SIGN-UP (self-service "User" accounts) ================= */
 function renderSignup(){
@@ -1046,6 +998,7 @@ async function submitSignup(e){
   e.preventDefault();
   const name = grab('su-name'), username = grab('su-user').trim(), pass = grab('su-pass'), pass2 = grab('su-pass2');
   if(!name || !username || !pass || !pass2){ state.loginError='Please fill in every field.'; render(); return; }
+  if(!username.toLowerCase().endsWith('@patilgroup.com')){ state.loginError='Only email IDs ending with @patilgroup.com are allowed.'; render(); return; }
   if(pass.length<4){ state.loginError='Password must be at least 4 characters.'; render(); return; }
   if(pass!==pass2){ state.loginError='Passwords do not match.'; render(); return; }
   if(state.users.find(x=>x.username.toLowerCase()===username.toLowerCase())){ state.loginError='That username is already taken.'; render(); return; }
@@ -1112,7 +1065,6 @@ function renderShell(){
   <div class="topbar">
     <div class="brand"><div class="logo"><img src="https://patilgroup.com/pg.png" alt="Patil Group" onerror="this.parentElement.textContent='PG';"></div><div><h1>Patil Group</h1><div class="tag">Pipeline control — B2B infrastructure sales tracker</div></div></div>
     <div class="who">
-      <div id="cloud-sync-badge" style="font-size:11px;font-family:var(--font-mono);background:rgba(255,255,255,0.15);padding:4px 8px;border-radius:4px;color:#fff;" title="Google Apps Script URL connected"><span style="color:#60a5fa;display:inline-flex;align-items:center;gap:4px;">☁ Apps Script Connected</span></div>
       <button class="btn btn-primary" onclick="openOrderModal()">+ New Lead</button>
       <div class="avatar">${esc(initials)}</div>
       <div><div class="name">${esc(u.name)}</div><div class="role">${u.role==='ceo'?'CEO / Manager':'Sales representative'}</div></div>
@@ -1136,9 +1088,10 @@ function switchTopTab(id){
   state.topTab = id;
   if(id==='team' || id==='mypage' || id==='summary'){ state.viewingAsRep = null; }
   if(id==='mypage'){ state.activeTab = 'dashboard'; }
+  saveSession();
   render();
 }
-function switchTab(id){ state.activeTab=id; render(); }
+function switchTab(id){ state.activeTab=id; saveSession(); render(); }
 function renderTab(){
   const isCeo = state.currentUser.role==='ceo';
   if(state.topTab==='teamlogins' && isCeo) return renderTeam();
@@ -1601,7 +1554,7 @@ function renderDashboard(isMyPipeline = false){
 
   return html;
 }
-function setDashboardSubTab(v){ state.dashboardSubTab = v; render(); }
+function setDashboardSubTab(v){ state.dashboardSubTab = v; saveSession(); render(); }
 async function downloadAllLeads(filterData){
   if(typeof XLSX==='undefined'){ alert('Excel export library did not load — check your internet connection and try again.'); return; }
   const isCeo = state.currentUser.role==='ceo';
@@ -1646,8 +1599,8 @@ function renderTeamOverview(repList){
     </table></div>
   </div>`;
 }
-function viewRepPage(username){ state.topTab='team'; state.viewingAsRep = username; state.activeTab='dashboard'; render(); }
-function backToTeamOverview(){ state.topTab='team'; state.viewingAsRep = null; render(); }
+function viewRepPage(username){ state.topTab='team'; state.viewingAsRep = username; state.activeTab='dashboard'; saveSession(); render(); }
+function backToTeamOverview(){ state.topTab='team'; state.viewingAsRep = null; saveSession(); render(); }
 const GREEN_HEX = '#2f6b47';
 function reps(){ return state.users.filter(x=>x.role==='rep'); }
 function applyDashFilters(orders){
@@ -3394,7 +3347,7 @@ function renderTeam(){
     <div class="section-title"><div><h2>Add sales rep</h2><p>Create login credentials for a new team member</p></div></div>
     <div class="grid2">
       <div class="field"><label>Full name</label><input id="t-name"></div>
-      <div class="field"><label>Username</label><input id="t-username" placeholder="e.g. rep3"></div>
+      <div class="field"><label>Email ID</label><input id="t-username" placeholder="e.g. rep@patilgroup.com"></div>
       <div class="field"><label>Password</label><input id="t-password" placeholder="temporary password"></div>
     </div>
     <div class="modal-actions" style="border:none;padding-top:6px;"><button class="btn btn-primary" onclick="addRep()">Add rep</button></div>
@@ -3402,19 +3355,18 @@ function renderTeam(){
   <div class="card" style="margin-bottom:20px;">
     <div class="section-title"><div><h2>Team members</h2><p>Reset a rep's password to a temporary one — they'll be asked to set their own on next sign-in.</p></div></div>
     <div class="table-wrap" data-rkey="team-logins"><table>
-      <tr><th>Name</th><th>Username</th><th>Role</th><th>Password status</th><th></th></tr>
-      ${state.users.map(u=>`<tr><td>${esc(u.name)}</td><td>${esc(u.username)}</td><td>${u.role==='ceo'?'CEO / Manager':'Sales rep'}</td>
-        <td>${u.mustChangePassword?'<span class="badge badge-overdue">Temporary — not yet changed</span>':'<span style="color:var(--muted);">Set by user</span>'}</td>
+      <tr><th>Name</th><th>Username / Email</th><th>Role</th><th>Password Status</th><th></th></tr>
+      ${state.users.map(u=>`<tr>
+        <td style="font-weight:600;">${esc(u.name)}</td>
+        <td>${esc(u.username)}</td>
+        <td>${esc(u.roleTitle || (u.role==='ceo'?'CEO / Manager':'Sales rep'))}</td>
+        <td>${u.role==='ceo' ? '' : (u.mustChangePassword !== false ? 'Set by Admin' : 'Set by User')}</td>
         <td style="white-space:nowrap;">
           ${u.role==='rep'?`<button class="link-btn" onclick="openChangePasswordModal('${u.username}')">Reset password</button> <button class="link-btn btn-danger" onclick="removeRep('${u.username}')">Remove</button>`:''}
         </td></tr>`).join('')}
     </table></div>
   </div>
   <div class="card">
-    <div class="section-title"><div><h2>Google Apps Script Cloud Storage</h2><p>Data is stored and synced automatically to your Google Apps Script URL: <code>https://script.google.com/macros/s/AKfycbzOSi0bHXK7n5dLnOwyar5B4FMYIt4tYcO2ERzVcCAgPsOyA36TtQboAGV6IDEmqQPA6A/exec</code></p></div></div>
-    <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:20px;">
-      <button class="btn btn-primary" onclick="syncAllToAppsScript()">Sync All Data to Apps Script</button>
-    </div>
     <div class="section-title"><div><h2>Sample data</h2><p>This tracker was pre-loaded with sample offers so you could see the dashboards and reports working end to end.</p></div></div>
     <div style="display:flex;gap:10px;flex-wrap:wrap;">
       <button class="btn btn-primary" onclick="forceReseed()">Reload sample data</button>
@@ -3432,7 +3384,8 @@ async function clearSampleData(){
 async function addRep(){
   const name = grab('t-name'), username = grab('t-username').trim(), password = grab('t-password');
   if(!name||!username||!password){ alert('Fill in all fields.'); return; }
-  if(state.users.some(u=>u.username.toLowerCase()===username.toLowerCase())){ alert('That username is already taken.'); return; }
+  if(!username.toLowerCase().endsWith('@patilgroup.com')){ alert('Only Patil Group email IDs (@patilgroup.com) are allowed.'); return; }
+  if(state.users.some(u=>u.username.toLowerCase()===username.toLowerCase())){ alert('That email ID is already taken.'); return; }
   state.users.push({username, password, role:'rep', name, mustChangePassword:true});
   await storageSet(K_USERS, state.users);
   render();
@@ -3446,26 +3399,82 @@ async function removeRep(username){
 
 /* ================= INIT ================= */
 async function init(){
-  const [u,o,c,l,a,v] = await Promise.all([storageGet(K_USERS), storageGet(K_ORDERS), storageGet(K_COORD), storageGet(K_LOST), storageGet(K_ACTIVITY), storageGet(K_SEEDVER)]);
-  state.users = u || [];
-  state.orders = o || [];
-  state.coordination = c || [];
-  state.lostOrders = l || [];
-  state.activity = a || {};
-  normalizeOrderProducts(state.orders);
-  await storageSet(K_ORDERS, state.orders);
-  seedIfEmpty();
-  await seedDemoDataIfEmpty();
-  const storedVersion = v && v.v ? v.v : null;
-  if(storedVersion !== SEED_VERSION){
-    if(SEED_VERSION.includes('force') || state.orders.length <= 10){
-      // Small leftover test data (or none), or a forced version update — re-run seed
-      await runSeed();
+  try {
+    const u = localStorage.getItem(K_USERS);
+    const o = localStorage.getItem(K_ORDERS);
+    const c = localStorage.getItem(K_COORD);
+    const l = localStorage.getItem(K_LOST);
+    const a = localStorage.getItem(K_ACTIVITY);
+    const s = localStorage.getItem(K_SESSION);
+
+    if (o) state.orders = JSON.parse(o);
+    if (c) state.coordination = JSON.parse(c);
+    if (l) state.lostOrders = JSON.parse(l);
+    if (a) state.activity = JSON.parse(a);
+    const localUsers = u ? JSON.parse(u) : [];
+    const localSession = s ? JSON.parse(s) : null;
+
+    state.users = TARGET_ROSTER.map(tr => {
+      const existing = localUsers.find(x => x && x.username && x.username.toLowerCase() === tr.username.toLowerCase());
+      if (existing) {
+        return {
+          ...tr,
+          password: existing.password || tr.password,
+          mustChangePassword: existing.mustChangePassword !== undefined ? existing.mustChangePassword : tr.mustChangePassword
+        };
+      }
+      return { ...tr };
+    });
+
+    if (localSession && localSession.username) {
+      const activeUser = state.users.find(x => x.username.toLowerCase() === localSession.username.toLowerCase());
+      if (activeUser) {
+        state.currentUser = activeUser;
+        if (localSession.topTab) state.topTab = localSession.topTab;
+        if (localSession.activeTab) state.activeTab = localSession.activeTab;
+        if (localSession.viewingAsRep !== undefined) state.viewingAsRep = localSession.viewingAsRep;
+        if (localSession.dashboardSubTab) state.dashboardSubTab = localSession.dashboardSubTab;
+      }
     }
-    await storageSet(K_SEEDVER, {v: SEED_VERSION});
+  } catch(e) {
+    console.error('Error loading local state:', e);
   }
+
+  seedIfEmpty();
   state.loaded = true;
   render();
+
+  // Non-blocking background sync with Apps Script
+  backgroundRemoteSync();
+}
+
+async function backgroundRemoteSync(){
+  try {
+    const [u, o, c, l, a, s] = await Promise.all([
+      storageGet(K_USERS),
+      storageGet(K_ORDERS),
+      storageGet(K_COORD),
+      storageGet(K_LOST),
+      storageGet(K_ACTIVITY),
+      storageGet(K_SESSION)
+    ]);
+    if (o && Array.isArray(o) && o.length > 0) state.orders = o;
+    if (c && Array.isArray(c)) state.coordination = c;
+    if (l && Array.isArray(l)) state.lostOrders = l;
+    if (a && typeof a === 'object') state.activity = a;
+
+    if (s && s.username && !state.currentUser) {
+      const activeUser = state.users.find(x => x.username.toLowerCase() === s.username.toLowerCase());
+      if (activeUser) {
+        state.currentUser = activeUser;
+        if (s.topTab) state.topTab = s.topTab;
+        if (s.activeTab) state.activeTab = s.activeTab;
+        if (s.viewingAsRep !== undefined) state.viewingAsRep = s.viewingAsRep;
+        if (s.dashboardSubTab) state.dashboardSubTab = s.dashboardSubTab;
+      }
+    }
+    render();
+  } catch(e) {}
 }
 init();
 </script>
