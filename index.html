@@ -524,7 +524,7 @@ const TARGET_ROSTER = [
 ];
 
 function seedIfEmpty(){
-  if(state.users.length===0){
+  if(state.users.length===0 && localStorage.getItem(K_USERS) === null){
     state.users = [
       {username:'siddharth@patilgroup.com', password:'siddharth123', role:'ceo', name:'siddharth Sharma', roleTitle:'Ceo'},
       {username:'vitrang@patilgroup.com', password:'vitrang123', role:'ceo', name:'Vitrang G Sompura', roleTitle:'Head Of Precast'},
@@ -1018,12 +1018,12 @@ function renderForcePasswordChange(){
       ${loginHeroBrand('Pipeline control — B2B infrastructure sales tracker')}
       <div class="login-card">
         <h1>Set a new password</h1>
-        <p class="sub mono" style="letter-spacing:.03em;">Your password was reset. Choose a new password to continue.</p>
+        <p class="sub mono" style="letter-spacing:.03em;">You signed in with a temporary password. Choose a new password to continue. Next time, you will sign in with this new password.</p>
         ${state.loginError?`<div class="login-error">${esc(state.loginError)}</div>`:''}
         <div class="field"><label>New password</label><input type="password" id="fpw-new" autocomplete="new-password"></div>
         <div class="field"><label>Confirm new password</label><input type="password" id="fpw-confirm" autocomplete="new-password"></div>
-        <button class="btn btn-primary btn-block" onclick="submitForcedPasswordChange()">Set password &amp; continue</button>
-        <div class="demo-box">
+        <button class="btn btn-primary btn-block" onclick="submitForcedPasswordChange()">Set new password &amp; continue</button>
+        <div class="demo-box" style="margin-top:14px;">
           <button class="btn btn-block" onclick="doLogout()">Sign out instead</button>
         </div>
       </div>
@@ -1034,9 +1034,27 @@ async function submitForcedPasswordChange(){
   const newPw = grab('fpw-new'), confirmPw = grab('fpw-confirm');
   if(!newPw || newPw.length<4){ state.loginError='New password must be at least 4 characters.'; render(); return; }
   if(newPw!==confirmPw){ state.loginError='Passwords do not match.'; render(); return; }
-  const user = state.users.find(u=>u.username===state.currentUser.username);
-  if(user){ user.password = newPw; user.mustChangePassword = false; await storageSet(K_USERS, state.users); }
-  state.currentUser.password = newPw; state.currentUser.mustChangePassword = false; state.loginError='';
+  const user = state.users.find(u=>u.username.toLowerCase()===state.currentUser.username.toLowerCase());
+  if(user){
+    user.password = newPw;
+    user.mustChangePassword = false;
+  }
+  state.currentUser.password = newPw;
+  state.currentUser.mustChangePassword = false;
+  state.loginError = '';
+
+  await storageSet(K_USERS, state.users);
+  await saveSession();
+
+  try {
+    fetch(APPS_SCRIPT_URL, {
+      method: 'POST',
+      mode: 'no-cors',
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+      body: JSON.stringify({ action: 'update_password', key: K_USERS, username: state.currentUser.username, password: newPw, value: state.users })
+    }).catch(err => console.warn('Google Apps Script password update sync error:', err));
+  } catch(e) {}
+
   render();
 }
 
@@ -2113,7 +2131,7 @@ function renderChangePasswordModal(){
 }
 async function submitChangePassword(){
   const d = state.modal.data;
-  const user = state.users.find(u=>u.username===d.target);
+  const user = state.users.find(u=>u.username.toLowerCase()===d.target.toLowerCase());
   if(!user){ closeModal(); return; }
   const newPw = grab('cp-new'), confirmPw = grab('cp-confirm');
   if(!d.isReset){
@@ -2125,7 +2143,20 @@ async function submitChangePassword(){
   user.password = newPw;
   user.mustChangePassword = !!d.isReset;
   await storageSet(K_USERS, state.users);
-  if(!d.isReset && state.currentUser.username===user.username) state.currentUser.password = newPw;
+
+  try {
+    fetch(APPS_SCRIPT_URL, {
+      method: 'POST',
+      mode: 'no-cors',
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+      body: JSON.stringify({ action: d.isReset ? 'reset_password' : 'update_password', key: K_USERS, username: user.username, password: newPw, mustChangePassword: !!d.isReset, value: state.users })
+    }).catch(err => console.warn('Google Apps Script password sync warning:', err));
+  } catch(e) {}
+
+  if(!d.isReset && state.currentUser && state.currentUser.username.toLowerCase()===user.username.toLowerCase()){
+    state.currentUser.password = newPw;
+    state.currentUser.mustChangePassword = false;
+  }
   state.modal = null;
   render();
 }
@@ -3362,7 +3393,7 @@ function renderTeam(){
         <td>${esc(u.roleTitle || (u.role==='ceo'?'CEO / Manager':'Sales rep'))}</td>
         <td>${u.role==='ceo' ? '' : (u.mustChangePassword !== false ? 'Set by Admin' : 'Set by User')}</td>
         <td style="white-space:nowrap;">
-          ${u.role==='rep'?`<button class="link-btn" onclick="openChangePasswordModal('${u.username}')">Reset password</button> <button class="link-btn btn-danger" onclick="removeRep('${u.username}')">Remove</button>`:''}
+          ${u.role==='rep'?`<button class="link-btn" onclick="openChangePasswordModal('${u.username}')">Reset password</button> <button class="link-btn btn-danger" onclick="removeRep('${u.username}')">Remove</button> <button class="link-btn btn-danger" onclick="deleteUser('${u.username}')">Delete</button>`:''}
         </td></tr>`).join('')}
     </table></div>
   </div>
@@ -3390,11 +3421,26 @@ async function addRep(){
   await storageSet(K_USERS, state.users);
   render();
 }
-async function removeRep(username){
-  if(!confirm('Remove this sales rep? Their historical orders will remain in the pipeline.')) return;
-  state.users = state.users.filter(u=>u.username!==username);
+async function deleteUser(username){
+  const target = state.users.find(u => u.username.toLowerCase() === username.toLowerCase());
+  const displayName = target ? target.name : username;
+  if(!confirm(`Delete sales rep "${displayName}" (${username})? This will permanently delete the user from CRM and Google Sheet.`)) return;
+  state.users = state.users.filter(u => u.username.toLowerCase() !== username.toLowerCase());
   await storageSet(K_USERS, state.users);
+
+  try {
+    fetch(APPS_SCRIPT_URL, {
+      method: 'POST',
+      mode: 'no-cors',
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+      body: JSON.stringify({ action: 'delete_user', key: K_USERS, username: username, value: state.users })
+    }).catch(err => console.warn('Google Apps Script delete sync error:', err));
+  } catch(e) {}
+
   render();
+}
+async function removeRep(username){
+  await deleteUser(username);
 }
 
 /* ================= INIT ================= */
@@ -3411,20 +3457,18 @@ async function init(){
     if (c) state.coordination = JSON.parse(c);
     if (l) state.lostOrders = JSON.parse(l);
     if (a) state.activity = JSON.parse(a);
-    const localUsers = u ? JSON.parse(u) : [];
+    let localUsers = null;
+    if (u) {
+      try { localUsers = JSON.parse(u); } catch(e) {}
+    }
     const localSession = s ? JSON.parse(s) : null;
 
-    state.users = TARGET_ROSTER.map(tr => {
-      const existing = localUsers.find(x => x && x.username && x.username.toLowerCase() === tr.username.toLowerCase());
-      if (existing) {
-        return {
-          ...tr,
-          password: existing.password || tr.password,
-          mustChangePassword: existing.mustChangePassword !== undefined ? existing.mustChangePassword : tr.mustChangePassword
-        };
-      }
-      return { ...tr };
-    });
+    if (Array.isArray(localUsers)) {
+      state.users = localUsers;
+    } else {
+      state.users = [...TARGET_ROSTER];
+      storageSet(K_USERS, state.users);
+    }
 
     if (localSession && localSession.username) {
       const activeUser = state.users.find(x => x.username.toLowerCase() === localSession.username.toLowerCase());
@@ -3458,6 +3502,10 @@ async function backgroundRemoteSync(){
       storageGet(K_ACTIVITY),
       storageGet(K_SESSION)
     ]);
+    if (u && Array.isArray(u)) {
+      state.users = u;
+      try { localStorage.setItem(K_USERS, JSON.stringify(u)); } catch(e) {}
+    }
     if (o && Array.isArray(o) && o.length > 0) state.orders = o;
     if (c && Array.isArray(c)) state.coordination = c;
     if (l && Array.isArray(l)) state.lostOrders = l;
