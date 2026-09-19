@@ -3400,36 +3400,14 @@ function renderTeam(){
     <div class="modal-actions" style="border:none;padding-top:6px;"><button class="btn btn-primary" onclick="addRep()">Add rep</button></div>
   </div>
   <div class="card" style="margin-bottom:20px;">
-    <div class="section-title"><div><h2>Team members</h2><p>Manage sales rep credentials and passwords. Admin passwords are protected and cannot be modified or deleted.</p></div></div>
+    <div class="section-title"><div><h2>Team members</h2><p>Reset a rep's password to a temporary one — they'll be asked to set their own on next sign-in.</p></div></div>
     <div class="table-wrap" data-rkey="team-logins"><table>
-      <tr><th>Name</th><th>Username</th><th>Role</th><th>Password Status</th><th>Actions</th></tr>
-      ${state.users.map(u=>{
-        const isRep = u.role === 'rep';
-        let statusHtml = '';
-        if (u.role === 'ceo') {
-          statusHtml = '<span style="color:var(--muted);font-weight:500;">Protected (Admin)</span>';
-        } else if (u.passwordDeleted || !u.password) {
-          statusHtml = '<span class="badge badge-overdue" style="background:var(--red-bg);color:var(--red);">Password Deleted</span>';
-        } else if (u.mustChangePassword !== false) {
-          statusHtml = '<span class="badge badge-warm">Set by Admin</span>';
-        } else {
-          statusHtml = '<span style="color:var(--green);font-weight:600;">Set by User</span>';
-        }
-
-        return `<tr>
-          <td style="font-weight:600;">${esc(u.name)}</td>
-          <td>${esc(u.username)}</td>
-          <td>${esc(u.roleTitle || (u.role==='ceo'?'CEO / Manager':'Sales rep'))}</td>
-          <td>${statusHtml}</td>
-          <td style="white-space:nowrap;">
-            ${isRep ? `
-              <button class="link-btn" onclick="openChangePasswordModal('${esc(u.username)}')">Reset password</button>
-              <button class="link-btn btn-danger" style="margin-left:8px;" onclick="deleteUserPassword('${esc(u.username)}')">Delete password</button>
-              <button class="link-btn btn-danger" style="margin-left:8px;opacity:0.8;" onclick="removeRep('${esc(u.username)}')">Remove user</button>
-            ` : '<span style="color:var(--muted);font-size:11px;">Admin Protected</span>'}
-          </td>
-        </tr>`;
-      }).join('')}
+      <tr><th>Name</th><th>Username</th><th>Role</th><th>Password status</th><th></th></tr>
+      ${state.users.map(u=>`<tr><td>${esc(u.name)}</td><td>${esc(u.username)}</td><td>${u.role==='ceo'?'CEO / Manager':'Sales rep'}</td>
+        <td>${u.mustChangePassword?'<span class="badge badge-overdue">Temporary — not yet changed</span>':'<span style="color:var(--muted);">Set by user</span>'}</td>
+        <td style="white-space:nowrap;">
+          ${u.role==='rep'?`<button class="link-btn" onclick="openChangePasswordModal('${u.username}')">Reset password</button> <button class="link-btn btn-danger" onclick="removeRep('${u.username}')">Remove</button>`:''}
+        </td></tr>`).join('')}
     </table></div>
   </div>
   <div class="card">
@@ -3451,55 +3429,15 @@ async function clearSampleData(){
   await Promise.all([storageSet(K_ORDERS, state.orders), storageSet(K_COORD, state.coordination), storageSet(K_LOST, state.lostOrders)]);
   render();
 }
-async function deleteUserPassword(username){
-  const u = state.users.find(x => x.username.toLowerCase() === username.toLowerCase());
-  if(!u) return;
-  if(u.role === 'ceo'){
-    alert('Admin passwords are protected and cannot be deleted.');
-    return;
-  }
-  if(!confirm(`Are you sure you want to delete the password for ${u.name || u.username}? The password will be deleted in Google Sheets as well.`)) return;
-
-  u.password = '';
-  u.mustChangePassword = true;
-  u.passwordDeleted = true;
-
-  await storageSet(K_USERS, state.users);
-  alert(`Password for ${u.name || u.username} has been deleted and synced to Google Sheets.`);
-  render();
-}
-function openChangePasswordModal(username){
-  const u = state.users.find(x => x.username.toLowerCase() === username.toLowerCase());
-  if(!u) return;
-  if(u.role === 'ceo'){
-    alert('Admin passwords cannot be reset from here.');
-    return;
-  }
-  const newPass = prompt(`Enter new temporary password for ${u.name || u.username}:`);
-  if(!newPass || !newPass.trim()) return;
-
-  u.password = newPass.trim();
-  u.mustChangePassword = true;
-  u.passwordDeleted = false;
-
-  storageSet(K_USERS, state.users);
-  alert(`Password for ${u.name || u.username} has been reset and synced to Google Sheets.`);
-  render();
-}
 async function addRep(){
   const name = grab('t-name'), username = grab('t-username').trim(), password = grab('t-password');
   if(!name||!username||!password){ alert('Fill in all fields.'); return; }
   if(state.users.some(u=>u.username.toLowerCase()===username.toLowerCase())){ alert('That username is already taken.'); return; }
-  state.users.push({username, password, role:'rep', name, mustChangePassword:true, passwordDeleted:false});
+  state.users.push({username, password, role:'rep', name, mustChangePassword:true});
   await storageSet(K_USERS, state.users);
   render();
 }
 async function removeRep(username){
-  const u = state.users.find(x => x.username.toLowerCase() === username.toLowerCase());
-  if(u && u.role === 'ceo'){
-    alert('Admin accounts cannot be removed.');
-    return;
-  }
   if(!confirm('Remove this sales rep? Their historical orders will remain in the pipeline.')) return;
   state.users = state.users.filter(u=>u.username!==username);
   await storageSet(K_USERS, state.users);
