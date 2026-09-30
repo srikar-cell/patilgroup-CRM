@@ -2088,7 +2088,7 @@ function openDownloadModal(type, id=null){
 function renderDownloadModal() {
   const d = state.modal.data;
   return `
-    <div class="modal-bg" onclick="if(event.target===this) closeModal()">
+    <div class="modal-bg">
       <div class="modal" style="position:relative;max-width:400px;">
         <button class="btn close-x" onclick="closeModal()" style="border:none;background:none;font-size:16px;">✕</button>
         <h2>Download Data</h2>
@@ -2139,7 +2139,7 @@ function renderChangePasswordModal(){
   const d = state.modal.data;
   const targetUser = state.users.find(u=>u.username===d.target);
   return `
-    <div class="modal-bg" onclick="if(event.target===this) closeModal()">
+    <div class="modal-bg">
       <div class="modal" style="position:relative;max-width:400px;">
         <button class="btn close-x" onclick="closeModal()" style="border:none;background:none;font-size:16px;">✕</button>
         <h2>${d.isReset?('Reset password for '+esc(targetUser?targetUser.name:d.target)):'Change password'}</h2>
@@ -2196,7 +2196,7 @@ function renderQuickUpdateModal(){
 
   if (needsDelayClear) {
     return `
-    <div class="modal-bg" onclick="if(event.target===this) closeModal()">
+    <div class="modal-bg">
       <div class="modal" style="position:relative;max-width:460px;">
         <button class="btn close-x" onclick="closeModal()" style="border:none;background:none;font-size:16px;">✕</button>
         <h2>Update Action (Delayed)</h2>
@@ -2250,7 +2250,7 @@ function renderQuickUpdateModal(){
   }
 
   return `
-  <div class="modal-bg" onclick="if(event.target===this) closeModal()">
+  <div class="modal-bg">
     <div class="modal" style="position:relative;max-width:460px;">
       <button class="btn close-x" onclick="closeModal()" style="border:none;background:none;font-size:16px;">✕</button>
       <h2>Update offer</h2>
@@ -2382,7 +2382,7 @@ function renderOrderModal(){
 
   if (needsDelayClear) {
     return `
-    <div class="modal-bg" onclick="if(event.target===this) closeModal()">
+    <div class="modal-bg">
       <div class="modal" style="position:relative;max-width:460px;">
         <button class="btn close-x" onclick="closeModal()" style="border:none;background:none;font-size:16px;">✕</button>
         <h2>Update Action (Delayed)</h2>
@@ -2436,7 +2436,7 @@ function renderOrderModal(){
   }
 
   return `
-  <div class="modal-bg" onclick="if(event.target===this) closeModal()">
+  <div class="modal-bg">
     <div class="modal" style="position:relative;">
       <button class="btn close-x" onclick="closeModal()" style="border:none;background:none;font-size:16px;">✕</button>
       <h2>${isEdit?'Edit order':'New Lead'}</h2>
@@ -2525,7 +2525,98 @@ function renderOrderModal(){
   </div>`;
 }
 
+function syncModalFormInputs(prefix = 'f') {
+  if (!state.modal || !state.modal.data) return;
+  const d = state.modal.data;
+  const grabVal = id => { const el = document.getElementById(id); return el ? el.value : null; };
+
+  const dl = grabVal(prefix + '-dateLogged');
+  if (dl !== null) d.dateLogged = dl;
+
+  const sp = grabVal(prefix + '-salesPerson');
+  if (sp !== null) d.salesPerson = sp;
+
+  const lst = grabVal(prefix + '-leadSourceType');
+  if (lst !== null) d.leadSourceType = lst;
+
+  const lsn = grabVal(prefix + '-leadSourceName');
+  if (lsn !== null) d.leadSourceName = lsn;
+
+  const lso = grabVal(prefix + '-leadSourceOther');
+  if (lso !== null) d.leadSourceOther = lso;
+
+  const cn = grabVal(prefix + '-clientName');
+  if (cn !== null) d.clientName = cn;
+
+  const cp = grabVal(prefix + '-clientPOC');
+  if (cp !== null) d.clientPOC = cp;
+
+  const cpd = grabVal(prefix + '-clientPOCDesignation');
+  if (cpd !== null) d.clientPOCDesignation = cpd;
+
+  const cm = grabVal(prefix + '-clientMobile');
+  if (cm !== null) d.clientMobile = cm;
+
+  const ce = grabVal(prefix + '-clientEmail');
+  if (ce !== null) d.clientEmail = ce;
+
+  const pcat = grabVal(prefix + '-productCategory');
+  const psub = grabVal(prefix + '-productSubCategory');
+  if (pcat !== null) {
+    d.product = (psub && (PRODUCTS_HIERARCHY[pcat]||[]).includes(psub)) ? `${pcat}, ${psub}` : pcat;
+  }
+
+  const pod = grabVal(prefix + '-productOtherDesc');
+  if (pod !== null) d.productOtherDesc = pod;
+
+  const pn = grabVal(prefix + '-projectName');
+  if (pn !== null) d.projectName = pn;
+
+  const prcat = grabVal(prefix + '-projectCategory');
+  const prsub = grabVal(prefix + '-projectSubCategory');
+  if (prcat !== null) {
+    d.projectType = (prsub && (PROJECT_TYPES_HIERARCHY[prcat]||[]).includes(prsub)) ? `${prcat}, ${prsub}` : prcat;
+  }
+
+  const prod = grabVal(prefix + '-projectOtherDesc');
+  if (prod !== null) d.projectOtherDesc = prod;
+
+  const loc = grabVal(prefix + '-location');
+  if (loc !== null) d.location = loc;
+
+  const ev = grabVal(prefix + '-estimatedValue');
+  if (ev !== null) d.estimatedValue = ev;
+
+  const pri = grabVal(prefix + '-priority');
+  if (pri !== null) d.priority = pri;
+
+  const ds = grabVal(prefix + '-dealStage');
+  if (ds !== null) d.dealStage = ds;
+
+  const na = grabVal(prefix + '-nextAction');
+  if (na !== null) d.nextAction = na;
+
+  const asd = grabVal(prefix + '-actionStartDate');
+  if (asd !== null) d.actionStartDate = asd;
+
+  const aed = grabVal(prefix + '-actionEndDate');
+  if (aed !== null) d.actionEndDate = aed;
+
+  const at = grabVal(prefix + '-actionType');
+  if (at !== null) d.actionType = at;
+
+  const fud = grabVal(prefix + '-followUpDate');
+  if (fud !== null) d.followUpDate = fud;
+
+  const rlw = grabVal(prefix + '-reasonLostWon');
+  if (rlw !== null) d.reasonLostWon = rlw;
+
+  const cd = grabVal(prefix + '-closedDate');
+  if (cd !== null) d.closedDate = cd;
+}
+
 function updateLeadSourceNames(prefix) {
+  syncModalFormInputs(prefix);
   const d = state.modal.data;
   const type = document.getElementById(prefix+'-leadSourceType').value;
   const names = LEAD_SOURCES[type]||[];
@@ -2536,6 +2627,7 @@ function updateLeadSourceNames(prefix) {
   render();
 }
 function onLeadSourceNameChange(prefix){
+  syncModalFormInputs(prefix);
   const d = state.modal.data;
   d.leadSourceName = document.getElementById(prefix+'-leadSourceName').value;
   d.leadSourceOther = '';
@@ -2566,6 +2658,7 @@ function renderVisitTreeInline(path){
   return html;
 }
 function updateVisitTreeLevel(level, value){
+  syncModalFormInputs('f');
   const d = state.modal.data;
   d.leadSourceVisitPath = (d.leadSourceVisitPath||[]).slice(0, level);
   if(value) d.leadSourceVisitPath.push(value);
