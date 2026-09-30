@@ -364,14 +364,14 @@ function computeTrackingUpdates(oldOrder, newStage, newNextAction, newFollowUpDa
   let actionHistory = (oldOrder.actionHistory||[]).slice();
   let nextActionChangedDate = oldOrder.nextActionChangedDate || '';
   const actionChanged = (oldOrder.nextAction||'') !== (newNextAction||'');
-  // forceActionClose is true whenever the sales rep went through the "Update Action (Delayed)"
+  // forceActionClose is true whenever the sales person went through the "Update Action (Delayed)"
   // gate (reason/type/actual-start-date/remarks) \u2014 that gate is itself the rep declaring the
   // OLD action done, so it must close out here even if the new Next Follow up Action text happens
   // to read the same as the old one (e.g. still "Confirm PO terms", just restarting the clock).
   if(actionChanged || forceActionClose){
     if(actionHistory.length && !actionHistory[actionHistory.length-1].endDate){
       // Actual end date is always "today" — the date this update is being made, captured automatically.
-      // Actual start date is whatever the sales rep confirms they actually started work (not the date
+      // Actual start date is whatever the sales person confirms they actually started work (not the date
       // the action was merely logged), so Actual Total Days reflects real elapsed working time.
       actionHistory[actionHistory.length-1] = {...actionHistory[actionHistory.length-1], setDate: actionActualStartDate || actionHistory[actionHistory.length-1].setDate, endDate: today, delayReason: actionDelayReason||'', delayType: actionDelayType||'', remarks: actionRemarks||''};
     } else if(oldOrder.nextAction){
@@ -467,7 +467,7 @@ function actionAtd(plannedEnd, actualEnd){
   if(!plannedEnd || !actualEnd) return null;
   return daysBetween(plannedEnd, actualEnd);
 }
-/* Total deal cycle time \u2014 date logged to closed date, or to today if still open. */
+/* Total deal cycle time \u2014 lead received date to closed date, or to today if still open. */
 function totalCycleDays(order){
   const end = order.closedDate || todayStr();
   return daysBetween(order.dateLogged, end);
@@ -1014,7 +1014,7 @@ function renderSignup(){
         </form>
         <button type="button" class="btn btn-block" style="margin-top:8px;" onclick="backToLogin()">&larr; Back to sign in</button>
         <div class="demo-box">
-          New accounts are created with <b>User</b> (sales rep) access. Admin accounts are provisioned by a CEO/manager under the Team tab.
+          New accounts are created with <b>User</b> (sales person) access. Admin accounts are provisioned by a CEO/manager under the Team tab.
         </div>
       </div>
     </div>
@@ -1112,7 +1112,7 @@ function renderShell(){
     <div class="who">
       <button class="btn btn-primary" onclick="openOrderModal()">+ New Lead</button>
       <div class="avatar">${esc(initials)}</div>
-      <div><div class="name">${esc(u.name)}</div><div class="role">${u.role==='ceo'?'CEO / Manager':'Sales representative'}</div></div>
+      <div><div class="name">${esc(u.name)}</div><div class="role">${u.role==='ceo'?'CEO / Manager':'Sales person'}</div></div>
       <button class="btn" onclick="openChangePasswordModal()">Change password</button>
       <button class="btn" onclick="doLogout()">Sign out</button>
     </div>
@@ -1221,7 +1221,7 @@ function renderSummaryPage(){
   let html = `<div class="card" style="margin-bottom:20px;">
     <div class="section-title"><div><h2>Company Summary</h2><p>Overall performance at a glance &mdash; all reps combined</p></div></div>
     <div class="stat-grid" style="grid-template-columns:repeat(auto-fit,minmax(160px,1fr));">
-      <div class="stat-card"><div class="label">Total Sales Reps</div><div class="value">${repList.length}</div></div>
+      <div class="stat-card"><div class="label">Total Sales Persons</div><div class="value">${repList.length}</div></div>
       <div class="stat-card"><div class="label">Active in Field</div><div class="value">${repList.filter(r=>isRepActive(r.username)).length}</div><div class="sub">Last ${ACTIVE_WINDOW_MIN} min</div></div>
       <div class="stat-card"><div class="label">Open Pipeline Value</div><div class="value">${fmtCr(totalPipeline)}</div><div class="sub">${open.length} active offers</div></div>
       <div class="stat-card"><div class="label">Closed Won</div><div class="value">${won.length}</div><div class="sub">${fmtCr(wonValue)}</div></div>
@@ -1234,7 +1234,7 @@ function renderSummaryPage(){
 
   // Per-rep KPI table
   html += `<div class="card" style="margin-bottom:20px;">
-    <div class="section-title"><div><h2>Sales Rep KPI Breakdown</h2><p>Individual performance metrics for each representative</p></div></div>
+    <div class="section-title"><div><h2>Sales Person KPI Breakdown</h2><p>Individual performance metrics for each sales person</p></div></div>
     <div class="table-wrap" data-rkey="summary-reps"><table>
       <tr>
         <th style="min-width:120px;">Rep</th>
@@ -1493,7 +1493,7 @@ function renderDashboard(isMyPipeline = false){
   } else {
     const repList = reps();
     html += `<div class="stat-grid">
-      <div class="stat-card"><div class="label">Total sales reps</div><div class="value">${repList.length}</div></div>
+      <div class="stat-card"><div class="label">Total sales persons</div><div class="value">${repList.length}</div></div>
       <div class="stat-card"><div class="label">Active in field</div><div class="value">${repList.filter(r=>isRepActive(r.username)).length}</div><div class="sub">Seen in the last ${ACTIVE_WINDOW_MIN} min</div></div>
       <div class="stat-card"><div class="label">No. of Closed Won (All Time)</div><div class="value">${won.length}</div><div class="sub">${fmtCr(won.reduce((s,o)=>s+Number(o.estimatedValue||0),0))}</div></div>
       <div class="stat-card"><div class="label">No. of Closed Lost (All Time)</div><div class="value">${lost.length}</div><div class="sub">${fmtCr(lost.reduce((s,o)=>s+Number(o.estimatedValue||0),0))}</div></div>
@@ -1525,7 +1525,7 @@ function renderDashboard(isMyPipeline = false){
         </div>
       </div>
       ${overdueLeads.length ? `<div class="table-wrap" data-rkey="dashboard-overdue"><table>
-        <tr><th>Client</th>${showCeoColumns?'<th>Sales rep</th>':''}<th>Stage</th><th>Priority</th><th>Next Follow-up date</th><th>Next Follow up Action</th><th></th></tr>
+        <tr><th>Client</th>${showCeoColumns?'<th>Sales person</th>':''}<th>Stage</th><th>Priority</th><th>Next Follow-up date</th><th>Next Follow up Action</th><th></th></tr>
         ${overdueLeads.map(o=>`
           <tr class="clickable" onclick="openUpdateModal('${o.id}')">
             <td><b>${esc(o.clientName)}</b><br><span style="color:var(--muted);font-size:11.5px;">${esc(o.projectName||'')}</span></td>
@@ -1556,7 +1556,7 @@ function renderDashboard(isMyPipeline = false){
         </div>
       </div>
       ${upcomingLeads.length ? `<div class="table-wrap" data-rkey="dashboard-upcoming"><table>
-        <tr><th>Client</th>${showCeoColumns?'<th>Sales rep</th>':''}<th>Stage</th><th>Priority</th><th>Time Left</th><th>Next Follow-up date</th><th>Next Follow up Action</th><th></th></tr>
+        <tr><th>Client</th>${showCeoColumns?'<th>Sales person</th>':''}<th>Stage</th><th>Priority</th><th>Time Left</th><th>Next Follow-up date</th><th>Next Follow up Action</th><th></th></tr>
         ${upcomingLeads.map(o=>`
           <tr class="clickable" onclick="openUpdateModal('${o.id}')">
             <td><b>${esc(o.clientName)}</b><br><span style="color:var(--muted);font-size:11.5px;">${esc(o.projectName||'')}</span></td>
@@ -1619,7 +1619,7 @@ async function downloadAllLeads(filterData){
 }
 function renderTeamOverview(repList){
   if(!repList.length){
-    return `<div class="card" style="margin-bottom:20px;"><div class="section-title"><div><h2>Team overview</h2><p>Where the team stands right now</p></div></div><div class="empty">Add sales reps under Team logins to see them here.</div></div>`;
+    return `<div class="card" style="margin-bottom:20px;"><div class="section-title"><div><h2>Team overview</h2><p>Where the team stands right now</p></div></div><div class="empty">Add sales persons under Team logins to see them here.</div></div>`;
   }
   return `<div class="card" style="margin-bottom:20px;">
     <div class="section-title"><div><h2>Team overview</h2><p>Field presence, location, and what's due next for each rep</p></div></div>
@@ -1705,13 +1705,13 @@ function buildMasterDataRows(orders){
     return {
       'Client': o.clientName||'',
       'Project': o.projectName||'',
-      'Sales Rep': repName(o.salesPerson),
+      'Sales Person': repName(o.salesPerson),
       'Lead Source': o.leadSourceType||'',
       'Lead Source Detail': leadSourceDetailLabel(o),
       'Current Stage': o.dealStage||'',
       'Priority': o.priority||'',
       'Estimated Value (Cr)': o.estimatedValue||0,
-      'Date Logged': o.dateLogged||'',
+      'Lead Received Date': o.dateLogged||'',
       'Closed Date': o.closedDate||'',
       'Total Offer Cycle Time (days)': totalCycleDays(o),
       'Next Follow up Action': o.nextAction||'',
@@ -1773,10 +1773,10 @@ function setDealCycleActionFilter(v){ state.dealCycleActionFilter = v; render();
 function setDealCycleDelayTypeFilter(v){ state.dealCycleDelayTypeFilter = v; render(); }
 function buildDealCycleSheets(o){
   const overview = [{
-    'Client': o.clientName||'', 'Project': o.projectName||'', 'Sales Rep': repName(o.salesPerson),
+    'Client': o.clientName||'', 'Project': o.projectName||'', 'Sales Person': repName(o.salesPerson),
     'Product': o.product||'', 'Project Type': o.projectType||'', 'Location': o.location||'',
     'Estimated Value (Cr)': o.estimatedValue||0, 'Priority': o.priority||'',
-    'Current Stage': o.dealStage||'', 'Date Logged': o.dateLogged||'', 'Closed Date': o.closedDate||'',
+    'Current Stage': o.dealStage||'', 'Lead Received Date': o.dateLogged||'', 'Closed Date': o.closedDate||'',
     'Total Offer Cycle Time (days)': totalCycleDays(o), 'Reason for Win/Loss': o.reasonLostWon||''
   }];
   const stages = (o.stageHistory||[]).map(s=>{
@@ -1938,8 +1938,8 @@ function renderDealCycle(){
   const productParts = (o.product||'').split(', ');
   const projectParts = (o.projectType||'').split(', ');
   const detailRows = [
-    ['Date logged', fmtDate(o.dateLogged)],
-    ['Sales rep', esc(repName(o.salesPerson))],
+    ['Lead Received Date', fmtDate(o.dateLogged)],
+    ['Sales person', esc(repName(o.salesPerson))],
     ['Lead source type', esc(o.leadSourceType||'—')],
     ['Lead source name', esc(leadSourceDetailLabel(o)||'—')],
     ['Client name / company', esc(o.clientName||'—')],
@@ -1983,7 +1983,7 @@ function renderDealCycle(){
       </div>
     </div>
     <div class="stat-grid" style="margin-bottom:4px;">
-      <div class="stat-card"><div class="label">Sales Rep</div><div class="value" style="font-size:15px;text-transform:uppercase;">${esc(repName(o.salesPerson))}</div></div>
+      <div class="stat-card"><div class="label">Sales Person</div><div class="value" style="font-size:15px;text-transform:uppercase;">${esc(repName(o.salesPerson))}</div></div>
       <div class="stat-card"><div class="label">Current stage</div><div class="value" style="font-size:15px;">${badgeForStage(o.dealStage)}</div></div>
       <div class="stat-card"><div class="label">Priority</div><div class="value" style="font-size:15px;">${badgeForPriority(o.priority)}</div></div>
       <div class="stat-card"><div class="label">Total offer cycle time (days)</div><div class="value">${cycleDays}</div><div class="sub">${isClosed?('Logged '+fmtDate(o.dateLogged)+' \u2192 closed '+fmtDate(o.closedDate)) : ('Logged '+fmtDate(o.dateLogged)+' \u2192 still open')}</div></div>
@@ -2271,7 +2271,7 @@ function renderQuickUpdateModal(){
           <label>Type of action — Dependency (required)</label>
           <select id="qf-actionType" onchange="syncDelayGate('qf')">
             <option value="">Select...</option>
-            <option value="Internal" ${curType==='Internal'?'selected':''}>Internal — company / sales rep needs to act</option>
+            <option value="Internal" ${curType==='Internal'?'selected':''}>Internal — company / sales person needs to act</option>
             <option value="External" ${curType==='External'?'selected':''}>External — client or other factors need to act</option>
             <option value="Both parties" ${curType==='Both parties'?'selected':''}>Both parties</option>
           </select>
@@ -2442,8 +2442,8 @@ function renderOrderModal(){
       <h2>${isEdit?'Edit order':'New Lead'}</h2>
       <p class="modal-sub">${isEdit?esc(d.clientName):'Log a new lead in the pipeline'}</p>
       <div class="grid2">
-        <div class="field"><label>Date logged</label><input type="date" id="f-dateLogged" value="${esc(d.dateLogged)}"></div>
-        <div class="field"><label>Sales rep</label>
+        <div class="field"><label>Lead Received Date</label><input type="date" id="f-dateLogged" value="${esc(d.dateLogged)}"></div>
+        <div class="field"><label>Sales person</label>
           ${canPickRep ? `<select id="f-salesPerson">${reps().map(r=>`<option value="${r.username}" ${r.username===d.salesPerson?'selected':''}>${esc(r.name)}</option>`).join('')}</select>`
             : `<input value="${esc(repName(d.salesPerson))}" disabled>`}
         </div>
@@ -2497,7 +2497,7 @@ function renderOrderModal(){
           <label>Type of action — Dependency (required)</label>
           <select id="f-actionType" onchange="syncDelayGate('f')">
             <option value="">Select...</option>
-            <option value="Internal" ${curType==='Internal'?'selected':''}>Internal — company / sales rep needs to act</option>
+            <option value="Internal" ${curType==='Internal'?'selected':''}>Internal — company / sales person needs to act</option>
             <option value="External" ${curType==='External'?'selected':''}>External — client or other factors need to act</option>
             <option value="Both parties" ${curType==='Both parties'?'selected':''}>Both parties</option>
           </select>
@@ -3496,22 +3496,22 @@ function drawCharts(){
 function renderTeam(){
   return `
   <div class="card" style="margin-bottom:20px;">
-    <div class="section-title"><div><h2>Add sales rep</h2><p>Create login credentials for a new team member</p></div></div>
+    <div class="section-title"><div><h2>Add sales person</h2><p>Create login credentials for a new team member</p></div></div>
     <div class="grid2">
       <div class="field"><label>Full name</label><input id="t-name"></div>
       <div class="field"><label>Email ID</label><input id="t-username" placeholder="e.g. rep@patilgroup.com"></div>
       <div class="field"><label>Password</label><input id="t-password" placeholder="temporary password"></div>
     </div>
-    <div class="modal-actions" style="border:none;padding-top:6px;"><button class="btn btn-primary" onclick="addRep()">Add rep</button></div>
+    <div class="modal-actions" style="border:none;padding-top:6px;"><button class="btn btn-primary" onclick="addRep()">Add sales person</button></div>
   </div>
   <div class="card" style="margin-bottom:20px;">
-    <div class="section-title"><div><h2>Team members</h2><p>Reset a rep's password to a temporary one — they'll be asked to set their own on next sign-in.</p></div></div>
+    <div class="section-title"><div><h2>Team members</h2><p>Reset a sales person's password to a temporary one — they'll be asked to set their own on next sign-in.</p></div></div>
     <div class="table-wrap" data-rkey="team-logins"><table>
       <tr><th>Name</th><th>Username / Email</th><th>Role</th><th>Password Status</th><th></th></tr>
       ${state.users.map(u=>`<tr>
         <td style="font-weight:600;">${esc(u.name)}</td>
         <td>${esc(u.username)}</td>
-        <td>${esc(u.roleTitle || (u.role==='ceo'?'CEO / Manager':'Sales rep'))}</td>
+        <td>${esc(u.roleTitle || (u.role==='ceo'?'CEO / Manager':'Sales person'))}</td>
         <td>${u.role==='ceo' ? '' : (u.mustChangePassword !== false ? 'Set by Admin' : 'Set by User')}</td>
         <td style="white-space:nowrap;">
           ${u.role==='rep'?`<div style="display:inline-flex;gap:12px;align-items:center;"><button class="link-btn" onclick="openChangePasswordModal('${u.username}')">Reset password</button><button class="link-btn btn-danger" onclick="removeRep('${u.username}')">Remove</button><button class="link-btn btn-danger" onclick="deleteUser('${u.username}')">Delete</button></div>`:''}
@@ -3545,7 +3545,7 @@ async function addRep(){
 async function deleteUser(username){
   const target = state.users.find(u => u.username.toLowerCase() === username.toLowerCase());
   const displayName = target ? target.name : username;
-  if(!confirm(`Delete sales rep "${displayName}" (${username})? This will permanently delete the user from CRM and Google Sheet.`)) return;
+  if(!confirm(`Delete sales person "${displayName}" (${username})? This will permanently delete the user from CRM and Google Sheet.`)) return;
   state.users = state.users.filter(u => u.username.toLowerCase() !== username.toLowerCase());
   await storageSet(K_USERS, state.users);
 
