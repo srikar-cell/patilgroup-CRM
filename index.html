@@ -286,10 +286,11 @@ const OPEN_STAGES = STAGES.slice(0,8);
 const PROJECT_TYPES_HIERARCHY = {
   "Railway": ["Railways", "Metro", "High Speed Rail"],
   "NHAI / SH": ["Elevated Corridors", "Bridges", "Roads"],
+  "Building": ["Residential", "Commercial/Public", "Commercial/Institutional", "Commercial/Factories"],
+  "Defence": ["Hanger", "Underground Infra"],
   "Airport": [],
   "Warehousing": [],
   "Data Centre": [],
-  "Public Building": [],
   "Stadium (Sports)": [],
   "Industrial (Factories)": [],
   "Multilevel Car Parking": [],
@@ -321,9 +322,9 @@ const PHYSICAL_VISIT_TREE = {
   "Wind Energy Consultants/clients": {}
 };
 const PRODUCTS_HIERARCHY = {
-  "UHPC": ["U Girder", "I Girder", "Segmental Box Girder", "Struted Box Girder", "Deck Slabs / Overlays", "Tunnel Segment (Metro/Roads)"],
-  "Building Product (Precast)": ["Columns", "Beams", "Slabs", "Load Bearing Walls", "Staircase", "Boundary Elements", "Facade Walls"],
-  "Utility": ["Box Culvert", "U Drain / Trenches / Covers", "Noise Barriers", "Retaining Walls", "Boundary Walls & Cattle Fencing", "Manual Chambers / Jersey Barriers"],
+  "UHPC": ["U Girder", "I Girder", "I Rafter", "I Column", "Segmental Box Girder", "Struted Box Girder", "Deck Slabs / Overlays", "Tunnel Segment (Metro/Roads)"],
+  "Building Product (Precast)": ["Columns", "Beams", "Slabs", "Hollow Core slabs", "Load Bearing Walls", "Staircase", "Boundary Elements", "Facade Walls"],
+  "Utility": ["Box Culvert", "U Drain / Trenches / Covers", "Noise Barriers", "Retaining Walls", "Boundary Walls & Cattle Fencing", "Manhole Chambers / Jersey Barriers"],
   "Wind Turbine Towers": [],
   "Others": []
 };
@@ -2371,11 +2372,14 @@ function renderOrderModal(){
   const actionDelayDays = pendingActionDelayDays(d);
   const curType = activeActionType(d);
   const productParts = (d.product||PRODUCTS[0]).split(', ');
-  const dProductCategory = PRODUCTS.includes(productParts[0]) ? productParts[0] : 'Others';
-  const dProductSubCategory = productParts.length > 1 ? productParts[1] : '';
+  const dProductCategory = PRODUCTS.includes(productParts[0]) ? productParts[0] : PRODUCTS[0];
+  const dProductSubCategory = '';
   const projectParts = (d.projectType||PROJECT_TYPES[0]).split(', ');
-  const dProjectCategory = PROJECT_TYPES.includes(projectParts[0]) ? projectParts[0] : 'Others';
-  const dProjectSubCategory = projectParts.length > 1 ? projectParts[1] : '';
+  const dProjectCategory = PROJECT_TYPES.includes(projectParts[0]) ? projectParts[0] : PROJECT_TYPES[0];
+  const dProjectSubCategory = '';
+
+  const existingProductTags = d.product ? d.product.split(', ').filter(Boolean) : [];
+  const existingProjectTags = d.projectType ? d.projectType.split(', ').filter(Boolean) : [];
 
 
   const needsDelayClear = isEdit && actionDelayDays > 0 && !state.modal.delayCleared;
@@ -2470,15 +2474,38 @@ function renderOrderModal(){
           <label>Product Sub-category</label>
           <select id="f-productSubCategory">${(PRODUCTS_HIERARCHY[dProductCategory]||[]).map(p=>`<option value="${p}" ${p===dProductSubCategory?'selected':''}>${p}</option>`).join('')}</select>
         </div>
+        <div class="field">
+          <label>&nbsp;</label>
+          <button type="button" class="btn" onclick="addProductTag()" style="white-space:nowrap;">+ Add Product</button>
+        </div>
+        <div class="field" style="grid-column:1/-1;">
+          <label>Product</label>
+          <div id="f-productTags" style="min-height:36px;padding:6px 10px;border:1px solid var(--border-strong);border-radius:6px;background:#f8f8f8;display:flex;flex-wrap:wrap;gap:6px;font-size:13px;">
+            ${existingProductTags.map(t => `<span data-val="${esc(t)}" class="product-tag" style="display:inline-flex;align-items:center;gap:4px;background:var(--accent-bg);border:1px solid var(--border-strong);border-radius:4px;padding:3px 8px;font-size:12px;">${esc(t)} <span onclick="removeProductTag(this)" style="cursor:pointer;color:var(--red);font-weight:700;font-size:14px;line-height:1;">&times;</span></span>`).join('')}
+          </div>
+          <input type="hidden" id="f-productFinal" value="${esc(d.product||'')}">
+        </div>
+
         <div class="field" style="grid-column:1/-1;"><label>Project name &amp; description *</label><input id="f-projectName" value="${esc(d.projectName)}"></div>
         <div class="field">
-          <label>Project type (Category) *</label>
+          <label>Project Category *</label>
           <select id="f-projectCategory" onchange="updateProjectSubCategories('f')">${PROJECT_TYPES.map(p=>`<option value="${p}" ${p===dProjectCategory?'selected':''}>${p}</option>`).join('')}</select>
         </div>
         <div class="field" id="f-projectOtherDescWrapper" style="${dProjectCategory==='Others' ? '' : 'display:none;'}"><label>Project type description *</label><input id="f-projectOtherDesc" value="${esc(d.projectOtherDesc||'')}" placeholder="Describe the project type"></div>
         <div class="field" id="f-projectSubCategoryWrapper" style="${(PROJECT_TYPES_HIERARCHY[dProjectCategory]||[]).length ? '' : 'display:none;'}">
-          <label>Project (Sub-category)</label>
+          <label>Project Sub-category</label>
           <select id="f-projectSubCategory">${(PROJECT_TYPES_HIERARCHY[dProjectCategory]||[]).map(p=>`<option value="${p}" ${p===dProjectSubCategory?'selected':''}>${p}</option>`).join('')}</select>
+        </div>
+        <div class="field" style="align-self:end;">
+          <label>&nbsp;</label>
+          <button type="button" class="btn" onclick="addProjectTag()">+ Add Project</button>
+        </div>
+        <div class="field" style="grid-column:1/-1;">
+          <label>Project</label>
+          <div id="f-projectTags" style="min-height:36px;padding:6px 10px;border:1px solid var(--border-strong);border-radius:6px;background:#f8f8f8;display:flex;flex-wrap:wrap;gap:6px;font-size:13px;">
+            ${existingProjectTags.map(t => `<span data-val="${esc(t)}" class="project-tag" style="display:inline-flex;align-items:center;gap:4px;background:var(--accent-bg);border:1px solid var(--border-strong);border-radius:4px;padding:3px 8px;font-size:12px;">${esc(t)} <span onclick="removeProjectTag(this)" style="cursor:pointer;color:var(--red);font-weight:bold;font-size:14px;line-height:1;">&times;</span></span>`).join('')}
+          </div>
+          <input type="hidden" id="f-projectFinal" value="${esc(d.projectType||'')}">
         </div>
         <div class="field"><label>Location / region *</label><input id="f-location" value="${esc(d.location)}"></div>
         <div class="field"><label>Estimated value (Cr) *</label><input type="number" step="0.01" id="f-estimatedValue" value="${esc(d.estimatedValue)}" onwheel="this.blur()"></div>
@@ -2560,26 +2587,11 @@ function syncModalFormInputs(prefix = 'f') {
   const ce = grabVal(prefix + '-clientEmail');
   if (ce !== null) d.clientEmail = ce;
 
-  const pcat = grabVal(prefix + '-productCategory');
-  const psub = grabVal(prefix + '-productSubCategory');
-  if (pcat !== null) {
-    d.product = (psub && (PRODUCTS_HIERARCHY[pcat]||[]).includes(psub)) ? `${pcat}, ${psub}` : pcat;
-  }
-
-  const pod = grabVal(prefix + '-productOtherDesc');
-  if (pod !== null) d.productOtherDesc = pod;
-
-  const pn = grabVal(prefix + '-projectName');
-  if (pn !== null) d.projectName = pn;
-
-  const prcat = grabVal(prefix + '-projectCategory');
-  const prsub = grabVal(prefix + '-projectSubCategory');
-  if (prcat !== null) {
-    d.projectType = (prsub && (PROJECT_TYPES_HIERARCHY[prcat]||[]).includes(prsub)) ? `${prcat}, ${prsub}` : prcat;
-  }
-
-  const prod = grabVal(prefix + '-projectOtherDesc');
-  if (prod !== null) d.projectOtherDesc = prod;
+  const f = id => document.getElementById(id) ? grabVal(id) : undefined;
+  if(f(prefix + '-productFinal')!==undefined) d.product = f(prefix + '-productFinal');
+  if(f(prefix + '-productOtherDesc')!==undefined) d.productOtherDesc = f(prefix + '-productOtherDesc');
+  if(f(prefix + '-projectFinal')!==undefined) d.projectType = f(prefix + '-projectFinal');
+  if(f(prefix + '-projectOtherDesc')!==undefined) d.projectOtherDesc = f(prefix + '-projectOtherDesc');
 
   const loc = grabVal(prefix + '-location');
   if (loc !== null) d.location = loc;
@@ -2694,6 +2706,76 @@ function updateProjectSubCategories(prefix) {
   if(descWrapper) descWrapper.style.display = cat==='Others' ? 'block' : 'none';
 }
 
+function _syncTagHidden(tagsId, hiddenId) {
+  const container = document.getElementById(tagsId);
+  const hidden = document.getElementById(hiddenId);
+  if(!container || !hidden) return;
+  const tags = Array.from(container.querySelectorAll('span[data-val]')).map(s => s.dataset.val);
+  hidden.value = tags.join(', ');
+}
+
+function addProductTag() {
+  const cat = document.getElementById('f-productCategory').value;
+  const subEl = document.getElementById('f-productSubCategory');
+  const subShown = subEl && subEl.closest('#f-productSubCategoryWrapper') && document.getElementById('f-productSubCategoryWrapper').style.display !== 'none';
+  let val;
+  if (cat === 'Others') {
+    const desc = (document.getElementById('f-productOtherDesc') || {}).value || '';
+    if (!desc.trim()) { alert('Please enter a product description for "Others".'); return; }
+    val = `Others - ${desc.trim()}`;
+  } else if (subShown && subEl.value) {
+    val = `${cat} - ${subEl.value}`;
+  } else {
+    val = cat;
+  }
+  const container = document.getElementById('f-productTags');
+  if (!container) return;
+  if (Array.from(container.querySelectorAll('span[data-val]')).some(s => s.dataset.val === val)) return;
+  const span = document.createElement('span');
+  span.dataset.val = val;
+  span.className = 'product-tag';
+  span.style.cssText = 'display:inline-flex;align-items:center;gap:4px;background:var(--accent-bg);border:1px solid var(--border-strong);border-radius:4px;padding:3px 8px;font-size:12px;';
+  span.innerHTML = `${val} <span onclick="removeProductTag(this)" style="cursor:pointer;color:var(--red);font-weight:bold;font-size:14px;line-height:1;">&times;</span>`;
+  container.appendChild(span);
+  _syncTagHidden('f-productTags', 'f-productFinal');
+}
+
+function removeProductTag(x) {
+  x.parentElement.remove();
+  _syncTagHidden('f-productTags', 'f-productFinal');
+}
+
+function addProjectTag() {
+  const cat = document.getElementById('f-projectCategory').value;
+  const subEl = document.getElementById('f-projectSubCategory');
+  const subShown = subEl && document.getElementById('f-projectSubCategoryWrapper') && document.getElementById('f-projectSubCategoryWrapper').style.display !== 'none';
+  let val;
+  if (cat === 'Others') {
+    const desc = (document.getElementById('f-projectOtherDesc') || {}).value || '';
+    if (!desc.trim()) { alert('Please enter a project type description for "Others".'); return; }
+    val = `Others - ${desc.trim()}`;
+  } else if (subShown && subEl.value) {
+    val = `${cat} - ${subEl.value}`;
+  } else {
+    val = cat;
+  }
+  const container = document.getElementById('f-projectTags');
+  if (!container) return;
+  if (Array.from(container.querySelectorAll('span[data-val]')).some(s => s.dataset.val === val)) return;
+  const span = document.createElement('span');
+  span.dataset.val = val;
+  span.className = 'project-tag';
+  span.style.cssText = 'display:inline-flex;align-items:center;gap:4px;background:var(--accent-bg);border:1px solid var(--border-strong);border-radius:4px;padding:3px 8px;font-size:12px;';
+  span.innerHTML = `${val} <span onclick="removeProjectTag(this)" style="cursor:pointer;color:var(--red);font-weight:bold;font-size:14px;line-height:1;">&times;</span>`;
+  container.appendChild(span);
+  _syncTagHidden('f-projectTags', 'f-projectFinal');
+}
+
+function removeProjectTag(x) {
+  x.parentElement.remove();
+  _syncTagHidden('f-projectTags', 'f-projectFinal');
+}
+
 function toggleProductOther(prefix){
   const sel = document.getElementById(prefix+'-productSelect');
   const other = document.getElementById(prefix+'-productOther');
@@ -2730,13 +2812,9 @@ async function saveOrder(){
       actionRemarks = state.modal.tempRemarks || (document.getElementById('f-actionRemarks') ? grab('f-actionRemarks').trim() : '');
   }
 
-  const productCat = grab('f-productCategory');
-  const productSub = grab('f-productSubCategory');
-  const product = productSub ? `${productCat}, ${productSub}` : productCat;
+  const product = grab('f-productFinal');
   const productOtherDesc = grab('f-productOtherDesc');
-  const projectCat = grab('f-projectCategory');
-  const projectSub = grab('f-projectSubCategory');
-  const projectType = projectSub ? `${projectCat}, ${projectSub}` : projectCat;
+  const projectType = grab('f-projectFinal');
   const clientMobile = grab('f-clientMobile').replace(/\D/g,'');
 
   const required = {
@@ -2744,6 +2822,7 @@ async function saveOrder(){
     'Client POC': grab('f-clientPOC'),
     'POC designation': grab('f-clientPOCDesignation'),
     'Product of interest': product,
+    'Project category': projectType,
     'Project name & description': grab('f-projectName'),
     'Location / region': grab('f-location'),
     'Next Follow up Action': newNextAction
