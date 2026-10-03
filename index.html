@@ -1993,7 +1993,10 @@ function renderDealCycle(){
   </div>
 
   <div class="card" style="margin-bottom:20px;">
-    <div class="section-title"><div><h2>Lead details</h2><p>Every attribute logged for this offer</p></div></div>
+    <div class="section-title">
+      <div><h2>Lead details</h2><p>Every attribute logged for this offer</p></div>
+      <button class="btn" style="flex-shrink:0;" onclick="openOrderModal('${o.id}', true)">Edit</button>
+    </div>
     <div class="grid2" style="row-gap:14px;">
       ${detailRows.map(([label,val])=>`<div class="field"><label>${esc(label)}</label><div style="font-size:13.5px;padding:6px 0;">${val}</div></div>`).join('')}
     </div>
@@ -2033,7 +2036,7 @@ function renderDealCycle(){
 }
 
 /* ================= ORDER MODAL (Add / Edit) ================= */
-function openOrderModal(id){
+function openOrderModal(id, skipDelay=false){
   const data = id ? state.orders.find(o=>o.id===id) : {
     id:null, dateLogged: todayStr(), leadSourceType:'Outbound', leadSourceName:LEAD_SOURCES['Outbound'][0], leadSourceOther:'', leadSourceVisitPath:[],
     salesPerson: state.currentUser.role==='rep' ? state.currentUser.username : (reps()[0]?.username||''),
@@ -2043,7 +2046,7 @@ function openOrderModal(id){
     nextAction:'', followUpDate:'', updates:[],
     nextActionChangedDate:'', actionHistory:[], followUpHistory:[], stageHistory:[]
   };
-  state.modal = {type:'order', data: JSON.parse(JSON.stringify(data))};
+  state.modal = {type:'order', data: JSON.parse(JSON.stringify(data)), delayCleared: skipDelay};
   render();
 }
 function openUpdateModal(id){
