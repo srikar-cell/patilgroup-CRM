@@ -1966,7 +1966,7 @@ function openOrderModal(id, skipDelay=false){
     id:null, dateLogged: todayStr(), leadSourceType:'Outbound', leadSourceName:LEAD_SOURCES['Outbound'][0], leadSourceOther:'', leadSourceVisitPath:[],
     salesPerson: state.currentUser.role==='rep' ? state.currentUser.username : (reps()[0]?.username||''),
     clientName:'', clientPOC:'', clientPOCDesignation:'', clientMobile:'', clientEmail:'',
-    product:PRODUCTS[0], projectName:'', projectType:PROJECT_TYPES[0], location:'', estimatedValue:'',
+    product:'', projectName:'', projectType:'', location:'', estimatedValue:'',
     dealStage:STAGES[0], priority:'Warm', reasonLostWon:'', closedDate:'', stageChangedDate:'',
     nextAction:'', followUpDate:'', updates:[],
     nextActionChangedDate:'', actionHistory:[], followUpHistory:[], stageHistory:[]
@@ -2299,11 +2299,13 @@ function renderOrderModal(){
   const canPickRep = state.currentUser.role==='ceo';
   const actionDelayDays = pendingActionDelayDays(d);
   const curType = activeActionType(d);
-  const productParts = (d.product||PRODUCTS[0]).split(', ');
-  const dProductCategory = PRODUCTS.includes(productParts[0]) ? productParts[0] : PRODUCTS[0];
+  const productParts = (d.product||'').split(', ').filter(Boolean);
+  const rawCatP = productParts.length ? productParts[0].split(' - ')[0] : '';
+  const dProductCategory = PRODUCTS.includes(rawCatP) ? rawCatP : PRODUCTS[0];
   const dProductSubCategory = '';
-  const projectParts = (d.projectType||PROJECT_TYPES[0]).split(', ');
-  const dProjectCategory = PROJECT_TYPES.includes(projectParts[0]) ? projectParts[0] : PROJECT_TYPES[0];
+  const projectParts = (d.projectType||'').split(', ').filter(Boolean);
+  const rawCatPr = projectParts.length ? projectParts[0].split(' - ')[0] : '';
+  const dProjectCategory = PROJECT_TYPES.includes(rawCatPr) ? rawCatPr : PROJECT_TYPES[0];
   const dProjectSubCategory = '';
 
   const existingProductTags = d.product ? d.product.split(', ').filter(Boolean) : [];
