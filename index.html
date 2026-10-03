@@ -520,19 +520,17 @@ const GOOGLE_CLIENT_ID = '550341682750-1grelp69ehj4jolkaighik26339hgmtm.apps.goo
 const ADMIN_EMAILS = [
   'siddharth@patilgroup.com',
   'vitrang@patilgroup.com',
-  'francisyakobu@patilgroup.com',
-  'srikar@patilgroup.com'
+  'francisyakobu@patilgroup.com'
 ];
 
 const TARGET_ROSTER = [
   {username:'siddharth@patilgroup.com', role:'ceo', name:'Siddharth Sharma', roleTitle:'CEO / Manager'},
   {username:'vitrang@patilgroup.com', role:'ceo', name:'Vitrang G Sompura', roleTitle:'Head Of Precast'},
-  {username:'francisyakobu@patilgroup.com', role:'ceo', name:'Francis Yakobu K', roleTitle:'Sales Manager'},
-  {username:'srikar@patilgroup.com', role:'ceo', name:'Srikar', roleTitle:'CEO / Manager'},
-  {username:'saurabhsamya@patilgroup.com', role:'rep', name:'Saurabh Saumya', roleTitle:'Regional Manager'},
-  {username:'raju@patilgroup.com', role:'rep', name:'GRK Raju', roleTitle:'Regional Manager'},
-  {username:'rahul@patilgroup.com', role:'rep', name:'Rahul', roleTitle:'Engineer Trainee'},
-  {username:'ram@patilgroup.com', role:'rep', name:'Ramchandra Siwal', roleTitle:'Engineer Trainee'}
+  {username:'francisyakobu@patilgroup.com', role:'ceo', name:'Francis Yakobu', roleTitle:'Sales Manager'},
+  {username:'krishnamraju@patilgroup.com', role:'rep', name:'GRK Raju', roleTitle:'Regional Manager'},
+  {username:'saurabhsamya@patilgroup.com', role:'rep', name:'Saurabh Samya', roleTitle:'Regional Manager'},
+  {username:'ramchandra.s@patilgroup.com', role:'rep', name:'Ramchandra', roleTitle:'Engineer Trainee'},
+  {username:'rahul.s@patilgroup.com', role:'rep', name:'Rahul', roleTitle:'Engineer Trainee'}
 ];
 
 function seedIfEmpty(){
@@ -556,18 +554,7 @@ async function forceReseed(){
   render();
 }
 async function runSeed(){
-  // Real BD roster — three regional managers own every deal now. Admins (Siddharth/Vitrang/Francis)
-  // are never deal owners; wherever the source data logged a deal under one of them, ownership was
-  // reassigned round-robin across the three reps (noted inline in that deal's Next Action text).
-  state.users = [
-    {username:'siddharth@patilgroup.com', password:'siddharth123', role:'ceo', name:'siddharth Sharma', roleTitle:'Ceo'},
-    {username:'vitrang@patilgroup.com', password:'vitrang123', role:'ceo', name:'Vitrang G Sompura', roleTitle:'Head Of Precast'},
-    {username:'francisyakobu@patilgroup.com', password:'francis123', role:'ceo', name:'Francis Yakobu K', roleTitle:'Sales Manager'},
-    {username:'saurabh@patilgroup.com', password:'saurabh123', role:'rep', name:'Saurabh Saumya', roleTitle:'Regional Manager', mustChangePassword:true},
-    {username:'raju@patilgroup.com', password:'raju123', role:'rep', name:'GRK Raju', roleTitle:'Regional Manager', mustChangePassword:true},
-    {username:'rahul@patilgroup.com', password:'rahul123', role:'rep', name:'Rahul', roleTitle:'Engineer Trainee', mustChangePassword:true},
-    {username:'ram@patilgroup.com', password:'ram123', role:'rep', name:'Ramchandra Siwal', roleTitle:'Engineer Trainee', mustChangePassword:true}
-  ];
+  state.users = [...TARGET_ROSTER];
   await storageSet(K_USERS, state.users);
 
   const mk = (o) => ({
