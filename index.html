@@ -9,6 +9,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/chartjs-plugin-datalabels/2.2.0/chartjs-plugin-datalabels.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://accounts.google.com/gsi/client" async defer></script>
 <style>
   :root{
     --bg:#ffffff; --card:#ffffff; --border:#e2e8f0; --border-strong:#cbd5e1;
@@ -514,16 +515,24 @@ function activeActionType(order){
 const SEED_VERSION = 'real-data-2026-09-09-force';
 const K_SEEDVER = 'crm:seedVersion';
 
-/* ================= SEED ================= */
+const GOOGLE_CLIENT_ID = '550341682750-1grelp69ehj4jolkaighik26339hgmtm.apps.googleusercontent.com';
+
+const ADMIN_EMAILS = [
+  'siddharth@patilgroup.com',
+  'vitrang@patilgroup.com',
+  'francisyakobu@patilgroup.com',
+  'srikar@patilgroup.com'
+];
+
 const TARGET_ROSTER = [
-  {username:'siddharth@patilgroup.com', password:'siddharth123', role:'ceo', name:'siddharth Sharma', roleTitle:'Ceo'},
-  {username:'vitrang@patilgroup.com', password:'vitrang123', role:'ceo', name:'Vitrang G Sompura', roleTitle:'Head Of Precast'},
-  {username:'francisyakobu@patilgroup.com', password:'francis123', role:'ceo', name:'Francis Yakobu K', roleTitle:'Sales Manager'},
-  {username:'saurabh@patilgroup.com', password:'saurabh123', role:'rep', name:'Saurabh Saumya', roleTitle:'Regional Manager', mustChangePassword:true},
-  {username:'saurabhsamya@patilgroup.com', password:'samya123', role:'rep', name:'Saurabh Saumya', roleTitle:'Regional Manager', mustChangePassword:false},
-  {username:'raju@patilgroup.com', password:'raju123', role:'rep', name:'GRK Raju', roleTitle:'Regional Manager', mustChangePassword:true},
-  {username:'rahul@patilgroup.com', password:'rahul123', role:'rep', name:'Rahul', roleTitle:'Engineer Trainee', mustChangePassword:true},
-  {username:'ram@patilgroup.com', password:'ram123', role:'rep', name:'Ramchandra Siwal', roleTitle:'Engineer Trainee', mustChangePassword:true}
+  {username:'siddharth@patilgroup.com', role:'ceo', name:'Siddharth Sharma', roleTitle:'CEO / Manager'},
+  {username:'vitrang@patilgroup.com', role:'ceo', name:'Vitrang G Sompura', roleTitle:'Head Of Precast'},
+  {username:'francisyakobu@patilgroup.com', role:'ceo', name:'Francis Yakobu K', roleTitle:'Sales Manager'},
+  {username:'srikar@patilgroup.com', role:'ceo', name:'Srikar', roleTitle:'CEO / Manager'},
+  {username:'saurabhsamya@patilgroup.com', role:'rep', name:'Saurabh Saumya', roleTitle:'Regional Manager'},
+  {username:'raju@patilgroup.com', role:'rep', name:'GRK Raju', roleTitle:'Regional Manager'},
+  {username:'rahul@patilgroup.com', role:'rep', name:'Rahul', roleTitle:'Engineer Trainee'},
+  {username:'ram@patilgroup.com', role:'rep', name:'Ramchandra Siwal', roleTitle:'Engineer Trainee'}
 ];
 
 function seedIfEmpty(){
@@ -808,11 +817,8 @@ function render(){
     return;
   }
   if(!state.currentUser){
-    app.innerHTML = (state.authView==='signup') ? renderSignup() : renderLogin();
-    return;
-  }
-  if(state.currentUser.mustChangePassword){
-    app.innerHTML = renderForcePasswordChange();
+    app.innerHTML = renderLogin();
+    setTimeout(initGoogleSignIn, 50);
     return;
   }
   app.innerHTML = renderShell();
@@ -822,65 +828,128 @@ function render(){
   if(scrollY) window.scrollTo(0, scrollY);
 }
 
-/* ================= COLUMN RESIZE (Excel-like drag-to-resize) =================
-   Widths are kept in-memory only (window.__colWidths), keyed by each table's
-   data-rkey plus column index, so a column you resize stays put while you switch
-   tabs in this session — but resets on a full page reload (by design, not saved
-   to storage). Since render() fully replaces #app's innerHTML every time, we
-   re-inject the resizer handles and re-apply any saved widths after every render
-   rather than trying to preserve DOM nodes across renders. */
-window.__colWidths = window.__colWidths || {};
-function applyColumnWidths(){
-  document.querySelectorAll('.table-wrap[data-rkey]').forEach(wrap=>{
-    const key = wrap.getAttribute('data-rkey');
-    const table = wrap.querySelector('table');
-    if(!table) return;
-    const headerRow = table.querySelector('tr');
-    if(!headerRow) return;
-    const ths = Array.from(headerRow.children).filter(el=>el.tagName==='TH');
-    const saved = window.__colWidths[key];
-    ths.forEach((th, i)=>{
-      if(saved && saved[i]) th.style.width = saved[i]+'px';
-      if(!th.querySelector('.resizer')){
-        const r = document.createElement('div');
-        r.className = 'resizer';
-        r.addEventListener('mousedown', e=>startColumnResize(e, th, key, i));
-        th.appendChild(r);
-      }
+/* ================= GOOGLE AUTHENTICATION ================= */
+function initGoogleSignIn(){
+  const btnContainer = document.getElementById('google-signin-btn');
+  if(!btnContainer) return;
+  if (window.google && google.accounts && google.accounts.id) {
+    btnContainer.innerHTML = '';
+    google.accounts.id.initialize({
+      client_id: GOOGLE_CLIENT_ID,
+      callback: handleGoogleCredentialResponse,
+      auto_select: false
     });
-  });
-}
-function startColumnResize(e, th, key, index){
-  e.preventDefault();
-  e.stopPropagation();
-  const startX = e.pageX;
-  const startWidth = th.getBoundingClientRect().width;
-  const handle = e.target;
-  handle.classList.add('resizing');
-  function onMove(ev){
-    const w = Math.max(50, Math.round(startWidth + (ev.pageX - startX)));
-    th.style.width = w+'px';
+    google.accounts.id.renderButton(
+      btnContainer,
+      { theme: 'outline', size: 'large', width: 300, text: 'signin_with', logo_alignment: 'center' }
+    );
+  } else {
+    setTimeout(initGoogleSignIn, 150);
   }
-  function onUp(){
-    document.removeEventListener('mousemove', onMove);
-    document.removeEventListener('mouseup', onUp);
-    handle.classList.remove('resizing');
-    window.__colWidths[key] = window.__colWidths[key] || {};
-    window.__colWidths[key][index] = th.getBoundingClientRect().width;
-  }
-  document.addEventListener('mousemove', onMove);
-  document.addEventListener('mouseup', onUp);
 }
 
-/* ================= LOGIN ================= */
-function setLoginMode(mode){ state.loginMode = mode; state.loginError=''; render(); setTimeout(()=>{ const el=document.getElementById('login-user'); if(el) el.focus(); },0); }
-function goToSignup(){ state.authView='signup'; state.loginError=''; render(); }
-function backToLogin(){ state.authView='login'; state.loginError=''; render(); }
+function parseJwt(token) {
+  try {
+    const base64Url = token.split('.')[1];
+    const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
+    const jsonPayload = decodeURIComponent(atob(base64).split('').map(function(c) {
+      return '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2);
+    }).join(''));
+    return JSON.parse(jsonPayload);
+  } catch(e) {
+    return null;
+  }
+}
 
-/* ================= LOGIN HERO BACKGROUND (matches patilgroup.com) ================= */
+async function handleGoogleCredentialResponse(response) {
+  if (!response || !response.credential) {
+    state.loginError = 'Google Sign-In failed. Please try again.';
+    render();
+    return;
+  }
+
+  const payload = parseJwt(response.credential);
+  if (!payload || !payload.email) {
+    state.loginError = 'Could not decode Google account details.';
+    render();
+    return;
+  }
+
+  const email = payload.email.trim().toLowerCase();
+  const googleName = payload.name || email.split('@')[0];
+
+  // 1. STRICT DOMAIN RESTRICTION: Only @patilgroup.com allowed
+  if (!email.endsWith('@patilgroup.com')) {
+    state.loginError = `Access Denied: (${email}) is a personal or unauthorized email. Only official @patilgroup.com Google accounts are permitted.`;
+    render();
+    return;
+  }
+
+  // Fetch latest users from remote storage if available
+  try {
+    const remoteUsers = await storageGet(K_USERS);
+    if (Array.isArray(remoteUsers) && remoteUsers.length > 0) {
+      state.users = remoteUsers;
+    }
+  } catch(e) {}
+
+  // 2. CHECK IF ADMIN (4 Specific Emails Only)
+  const isAdmin = ADMIN_EMAILS.includes(email);
+
+  let existingUser = state.users.find(u => u.username.toLowerCase() === email);
+
+  if (isAdmin) {
+    let adminUser = existingUser;
+    if (!adminUser) {
+      const rosterMatch = TARGET_ROSTER.find(t => t.username.toLowerCase() === email);
+      adminUser = {
+        username: email,
+        role: 'ceo',
+        name: rosterMatch ? rosterMatch.name : googleName,
+        roleTitle: rosterMatch ? rosterMatch.roleTitle : 'CEO / Manager'
+      };
+      state.users.push(adminUser);
+      await storageSet(K_USERS, state.users);
+    } else {
+      adminUser.role = 'ceo';
+      if (!adminUser.name) adminUser.name = googleName;
+    }
+    state.loginError = '';
+    startSession(adminUser);
+    return;
+  }
+
+  // 3. CHECK IF AUTHORIZED SALES REP USER
+  if (existingUser && existingUser.role === 'rep') {
+    state.loginError = '';
+    startSession(existingUser);
+    return;
+  }
+
+  const rosterMatch = TARGET_ROSTER.find(t => t.username.toLowerCase() === email && t.role === 'rep');
+  if (rosterMatch) {
+    let repUser = {
+      username: email,
+      role: 'rep',
+      name: rosterMatch.name || googleName,
+      roleTitle: rosterMatch.roleTitle || 'Sales Rep'
+    };
+    state.users.push(repUser);
+    await storageSet(K_USERS, state.users);
+    state.loginError = '';
+    startSession(repUser);
+    return;
+  }
+
+  // 4. DENY ACCESS IF NOT AUTHORIZED BY ADMIN YET
+  state.loginError = `Access Denied: Your email (${email}) has not been authorized by an administrator yet. Please ask an Admin to grant you access.`;
+  render();
+}
+
 function loginHeroBg(){
   return '';
 }
+
 function loginHeroBrand(subtitle){
   return `
     <div class="login-hero-brand">
@@ -891,84 +960,30 @@ function loginHeroBrand(subtitle){
 }
 
 function renderLogin(){
-  const mode = state.loginMode || 'user';
   return `
   <div class="login-wrap">
     ${loginHeroBg()}
     <div class="login-front">
       ${loginHeroBrand('Pipeline control — B2B infrastructure sales tracker')}
-      <div class="login-card">
-        <h1>Sign in</h1>
-        <p class="sub mono" style="letter-spacing:.03em;">Access your sales pipeline dashboard</p>
+      <div class="login-card" style="text-align:center;">
+        <h1 style="margin-bottom:6px;">Sign in</h1>
+        <p class="sub mono" style="letter-spacing:.03em;margin-bottom:20px;">Use your @patilgroup.com Google Account</p>
 
-        <div class="role-toggle">
-          <button type="button" class="${mode==='user'?'active':''}" onclick="setLoginMode('user')">User</button>
-          <button type="button" class="${mode==='admin'?'active':''}" onclick="setLoginMode('admin')">Admin</button>
+        ${state.loginError ? `<div class="login-error" style="text-align:left;margin-bottom:16px;">${esc(state.loginError)}</div>` : ''}
+
+        <div style="display:flex;justify-content:center;margin:16px 0;">
+          <div id="google-signin-btn"></div>
         </div>
 
-        ${state.loginError?`<div class="login-error">${esc(state.loginError)}</div>`:''}
-        <form onsubmit="doLogin(event)">
-          <div class="field"><label>Email ID</label><input id="login-user" type="email" autocomplete="username" placeholder="${mode==='admin'?'e.g. siddharth@patilgroup.com':'e.g. raju@patilgroup.com'}" onkeydown="if(event.key==='Enter'){ event.preventDefault(); const pEl=document.getElementById('login-pass'); if(pEl){ pEl.focus(); }else{ doLogin(event); } }"></div>
-          ${mode==='admin' ? '' : `<div class="field"><label>Password</label><input id="login-pass" type="password" autocomplete="current-password" placeholder="••••••"></div>`}
-          <button class="btn btn-primary btn-block" type="submit">Sign in as ${mode==='admin'?'Admin':'User'}</button>
-        </form>
+        <div style="margin-top:20px;padding:12px;background:var(--gray-bg);border-radius:6px;font-size:11.5px;color:var(--text2);line-height:1.5;text-align:left;font-family:var(--font-mono);">
+          <b>Security Notice:</b><br>
+          • Only official <b>@patilgroup.com</b> accounts are allowed.<br>
+          • Personal emails (@gmail.com, etc.) are blocked.<br>
+          • New users must be added by an Admin before logging in.
+        </div>
       </div>
     </div>
   </div>`;
-}
-async function doLogin(e){
-  e.preventDefault();
-  const u = document.getElementById('login-user').value.trim();
-  if(!u){ state.loginError='Please enter your email ID.'; render(); return; }
-  if(!u.toLowerCase().endsWith('@patilgroup.com')){
-    state.loginError='Access denied. Only Patil Group email IDs (@patilgroup.com) are allowed to access this system.';
-    render(); return;
-  }
-  const isAdminMode = (state.loginMode || 'user') === 'admin';
-  const passEl = document.getElementById('login-pass');
-  const p = passEl ? passEl.value : '';
-
-  let user = state.users.find(x => x.username.toLowerCase() === u.toLowerCase());
-  
-  if (!user || (!isAdminMode && user.password !== p)) {
-    try {
-      const freshUsers = await storageGet(K_USERS);
-      if (Array.isArray(freshUsers) && freshUsers.length > 0) {
-        state.users = freshUsers;
-        user = state.users.find(x => x.username.toLowerCase() === u.toLowerCase());
-      }
-    } catch(err) {}
-  }
-
-  if(isAdminMode){
-    if(!user){
-      const targetAdmin = TARGET_ROSTER.find(tr => tr.username.toLowerCase() === u.toLowerCase() && tr.role === 'ceo');
-      if(targetAdmin){
-        user = { ...targetAdmin };
-        state.users.push(user);
-        storageSet(K_USERS, state.users);
-      }
-    }
-    if(!user){
-      state.loginError = 'Admin account not found for that email ID.';
-      render(); return;
-    }
-    if(user.role !== 'ceo'){
-      state.loginError = 'This account is not an admin account. Switch to the User tab to sign in.';
-      render(); return;
-    }
-    state.loginError = '';
-    startSession(user);
-  } else {
-    if(!p){ state.loginError = 'Please enter your password.'; render(); return; }
-    if(!user || user.password !== p){ state.loginError = 'Incorrect email ID or password.'; render(); return; }
-    if(user.role !== 'rep'){
-      state.loginError = 'This is an admin account. Switch to the Admin tab to sign in.';
-      render(); return;
-    }
-    state.loginError = '';
-    startSession(user);
-  }
 }
 
 async function saveSession(){
@@ -993,96 +1008,14 @@ async function startSession(user){
   if(window.__pingTimer) clearInterval(window.__pingTimer);
   window.__pingTimer = setInterval(pingActivity, 5*60*1000);
 }
-async function doLogout(){ state.currentUser=null; state.viewingAsRep=null; state.topTab='mypage'; state.authView='login'; state.loginMode='user'; if(window.__pingTimer) clearInterval(window.__pingTimer); await saveSession(); render(); }
 
-/* ================= NEW USER SIGN-UP (self-service "User" accounts) ================= */
-function renderSignup(){
-  return `
-  <div class="login-wrap">
-    ${loginHeroBg()}
-    <div class="login-front">
-      ${loginHeroBrand('Create your Pipeline Control account')}
-      <div class="login-card">
-        <h1>Create account</h1>
-        <p class="sub mono" style="letter-spacing:.03em;">Register a new User login for Patil Group Pipeline Control</p>
-        ${state.loginError?`<div class="login-error">${esc(state.loginError)}</div>`:''}
-        <form onsubmit="submitSignup(event)">
-          <div class="field"><label>Full name</label><input id="su-name" autocomplete="name" placeholder="e.g. Ankit Sharma"></div>
-          <div class="field"><label>Choose username</label><input id="su-user" autocomplete="username" placeholder="e.g. ankit"></div>
-          <div class="field"><label>Choose password</label><input id="su-pass" type="password" autocomplete="new-password" placeholder="••••••"></div>
-          <div class="field"><label>Confirm password</label><input id="su-pass2" type="password" autocomplete="new-password" placeholder="••••••"></div>
-          <button class="btn btn-primary btn-block" type="submit">Create account &amp; sign in</button>
-        </form>
-        <button type="button" class="btn btn-block" style="margin-top:8px;" onclick="backToLogin()">&larr; Back to sign in</button>
-        <div class="demo-box">
-          New accounts are created with <b>User</b> (sales person) access. Admin accounts are provisioned by a CEO/manager under the Team tab.
-        </div>
-      </div>
-    </div>
-  </div>`;
-}
-async function submitSignup(e){
-  e.preventDefault();
-  const name = grab('su-name'), username = grab('su-user').trim(), pass = grab('su-pass'), pass2 = grab('su-pass2');
-  if(!name || !username || !pass || !pass2){ state.loginError='Please fill in every field.'; render(); return; }
-  if(!username.toLowerCase().endsWith('@patilgroup.com')){ state.loginError='Only email IDs ending with @patilgroup.com are allowed.'; render(); return; }
-  if(pass.length<4){ state.loginError='Password must be at least 4 characters.'; render(); return; }
-  if(pass!==pass2){ state.loginError='Passwords do not match.'; render(); return; }
-  if(state.users.find(x=>x.username.toLowerCase()===username.toLowerCase())){ state.loginError='That username is already taken.'; render(); return; }
-  const newUser = {username, password:pass, role:'rep', name};
-  state.users.push(newUser);
-  await storageSet(K_USERS, state.users);
-  state.loginError=''; state.authView='login'; state.loginMode='user';
-  startSession(newUser);
-}
-
-/* ================= FORCED PASSWORD CHANGE (first login after a reset) ================= */
-function renderForcePasswordChange(){
-  return `
-  <div class="login-wrap">
-    ${loginHeroBg()}
-    <div class="login-front">
-      ${loginHeroBrand('Pipeline control — B2B infrastructure sales tracker')}
-      <div class="login-card">
-        <h1>Set a new password</h1>
-        <p class="sub mono" style="letter-spacing:.03em;">You signed in with a temporary password. Choose a new password to continue. Next time, you will sign in with this new password.</p>
-        ${state.loginError?`<div class="login-error">${esc(state.loginError)}</div>`:''}
-        <div class="field"><label>New password</label><input type="password" id="fpw-new" autocomplete="new-password"></div>
-        <div class="field"><label>Confirm new password</label><input type="password" id="fpw-confirm" autocomplete="new-password"></div>
-        <button class="btn btn-primary btn-block" onclick="submitForcedPasswordChange()">Set new password &amp; continue</button>
-        <div class="demo-box" style="margin-top:14px;">
-          <button class="btn btn-block" onclick="doLogout()">Sign out instead</button>
-        </div>
-      </div>
-    </div>
-  </div>`;
-}
-async function submitForcedPasswordChange(){
-  const newPw = grab('fpw-new'), confirmPw = grab('fpw-confirm');
-  if(!newPw || newPw.length<4){ state.loginError='New password must be at least 4 characters.'; render(); return; }
-  if(newPw!==confirmPw){ state.loginError='Passwords do not match.'; render(); return; }
-  const user = state.users.find(u=>u.username.toLowerCase()===state.currentUser.username.toLowerCase());
-  if(user){
-    user.password = newPw;
-    user.mustChangePassword = false;
-  }
-  state.currentUser.password = newPw;
-  state.currentUser.mustChangePassword = false;
-  state.loginError = '';
-
-  await storageSet(K_USERS, state.users);
+async function doLogout(){
+  state.currentUser=null;
+  state.viewingAsRep=null;
+  state.topTab='mypage';
+  state.loginError='';
+  if(window.__pingTimer) clearInterval(window.__pingTimer);
   await saveSession();
-
-  try {
-    const fetchUrl = APPS_SCRIPT_URL + '?action=set&key=' + encodeURIComponent(K_USERS);
-    fetch(fetchUrl, {
-      method: 'POST',
-      mode: 'no-cors',
-      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-      body: JSON.stringify({ action: 'update_password', key: K_USERS, username: state.currentUser.username, password: newPw, value: state.users })
-    }).catch(err => console.warn('Google Apps Script password update sync error:', err));
-  } catch(e) {}
-
   render();
 }
 
@@ -1114,7 +1047,6 @@ function renderShell(){
       <button class="btn btn-primary" onclick="openOrderModal()">+ New Lead</button>
       <div class="avatar">${esc(initials)}</div>
       <div><div class="name">${esc(u.name)}</div><div class="role">${u.role==='ceo'?'CEO / Manager':'Sales person'}</div></div>
-      <button class="btn" onclick="openChangePasswordModal()">Change password</button>
       <button class="btn" onclick="doLogout()">Sign out</button>
     </div>
   </div>
@@ -3578,25 +3510,24 @@ function drawCharts(){
 function renderTeam(){
   return `
   <div class="card" style="margin-bottom:20px;">
-    <div class="section-title"><div><h2>Add sales person</h2><p>Create login credentials for a new team member</p></div></div>
+    <div class="section-title"><div><h2>Authorize Sales Person</h2><p>Grant Google Sign-In access to a new team member (@patilgroup.com)</p></div></div>
     <div class="grid2">
-      <div class="field"><label>Full name</label><input id="t-name"></div>
-      <div class="field"><label>Email ID</label><input id="t-username" placeholder="e.g. rep@patilgroup.com"></div>
-      <div class="field"><label>Password</label><input id="t-password" placeholder="temporary password"></div>
+      <div class="field"><label>Full name</label><input id="t-name" placeholder="e.g. Ankit Sharma"></div>
+      <div class="field"><label>Patil Group Email ID</label><input id="t-username" placeholder="e.g. ankit@patilgroup.com"></div>
     </div>
-    <div class="modal-actions" style="border:none;padding-top:6px;"><button class="btn btn-primary" onclick="addRep()">Add sales person</button></div>
+    <div class="modal-actions" style="border:none;padding-top:6px;"><button class="btn btn-primary" onclick="addRep()">Authorize sales person</button></div>
   </div>
   <div class="card" style="margin-bottom:20px;">
-    <div class="section-title"><div><h2>Team members</h2><p>Reset a sales person's password to a temporary one — they'll be asked to set their own on next sign-in.</p></div></div>
+    <div class="section-title"><div><h2>Team members</h2><p>Authorized Patil Group users who can sign in with their Google accounts.</p></div></div>
     <div class="table-wrap" data-rkey="team-logins"><table>
-      <tr><th>Name</th><th>Username / Email</th><th>Role</th><th>Password Status</th><th></th></tr>
+      <tr><th>Name</th><th>Username / Email</th><th>Role</th><th>Access Status</th><th></th></tr>
       ${state.users.map(u=>`<tr>
         <td style="font-weight:600;">${esc(u.name)}</td>
         <td>${esc(u.username)}</td>
         <td>${esc(u.roleTitle || (u.role==='ceo'?'CEO / Manager':'Sales person'))}</td>
-        <td>${u.role==='ceo' ? '' : (u.mustChangePassword !== false ? 'Set by Admin' : 'Set by User')}</td>
+        <td><span class="badge" style="background:#e3eee2;color:#2f6b47;">Google OAuth Authorized</span></td>
         <td style="white-space:nowrap;">
-          ${u.role==='rep'?`<div style="display:inline-flex;gap:12px;align-items:center;"><button class="link-btn" onclick="openChangePasswordModal('${u.username}')">Reset password</button><button class="link-btn btn-danger" onclick="removeRep('${u.username}')">Remove</button><button class="link-btn btn-danger" onclick="deleteUser('${u.username}')">Delete</button></div>`:''}
+          ${u.role==='rep'?`<button class="link-btn btn-danger" onclick="deleteUser('${u.username}')">Remove Access</button>`:''}
         </td></tr>`).join('')}
     </table></div>
   </div>
@@ -3616,12 +3547,13 @@ async function clearSampleData(){
   render();
 }
 async function addRep(){
-  const name = grab('t-name'), username = grab('t-username').trim(), password = grab('t-password');
-  if(!name||!username||!password){ alert('Fill in all fields.'); return; }
-  if(!username.toLowerCase().endsWith('@patilgroup.com')){ alert('Only Patil Group email IDs (@patilgroup.com) are allowed.'); return; }
-  if(state.users.some(u=>u.username.toLowerCase()===username.toLowerCase())){ alert('That email ID is already taken.'); return; }
-  state.users.push({username, password, role:'rep', name, mustChangePassword:true});
+  const name = grab('t-name').trim(), username = grab('t-username').trim().toLowerCase();
+  if(!name||!username){ alert('Fill in all fields.'); return; }
+  if(!username.endsWith('@patilgroup.com')){ alert('Only Patil Group email IDs (@patilgroup.com) are allowed.'); return; }
+  if(state.users.some(u=>u.username.toLowerCase()===username)){ alert('That email ID is already authorized.'); return; }
+  state.users.push({username: username, role:'rep', name: name, roleTitle:'Sales Rep'});
   await storageSet(K_USERS, state.users);
+  alert(`User "${name}" (${username}) has been granted access! They can now sign in using Google Sign-In.`);
   render();
 }
 async function deleteUser(username){
