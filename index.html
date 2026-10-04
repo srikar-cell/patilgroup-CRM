@@ -520,23 +520,48 @@ const GOOGLE_CLIENT_ID = '550341682750-1grelp69ehj4jolkaighik26339hgmtm.apps.goo
 const ADMIN_EMAILS = [
   'siddharth@patilgroup.com',
   'vitrang@patilgroup.com',
-  'francisyakobu@patilgroup.com'
+  'francisyakobu@patilgroup.com',
+  'srikar@patilgroup.com'
 ];
 
 const TARGET_ROSTER = [
   {username:'siddharth@patilgroup.com', role:'ceo', name:'Siddharth Sharma', roleTitle:'CEO / Manager'},
   {username:'vitrang@patilgroup.com', role:'ceo', name:'Vitrang G Sompura', roleTitle:'Head Of Precast'},
   {username:'francisyakobu@patilgroup.com', role:'ceo', name:'Francis Yakobu', roleTitle:'Sales Manager'},
+  {username:'srikar@patilgroup.com', role:'ceo', name:'Srikar', roleTitle:'Admin / Manager'},
   {username:'krishnamraju@patilgroup.com', role:'rep', name:'GRK Raju', roleTitle:'Regional Manager'},
   {username:'saurabhsamya@patilgroup.com', role:'rep', name:'Saurabh Samya', roleTitle:'Regional Manager'},
   {username:'ramchandra.s@patilgroup.com', role:'rep', name:'Ramchandra', roleTitle:'Engineer Trainee'},
   {username:'rahul.s@patilgroup.com', role:'rep', name:'Rahul', roleTitle:'Engineer Trainee'}
 ];
 
+function ensureAdminUsers(){
+  if(!Array.isArray(state.users)) state.users = [];
+  ADMIN_EMAILS.forEach(email => {
+    let u = state.users.find(x => x.username.toLowerCase() === email.toLowerCase());
+    if(!u){
+      const rosterMatch = TARGET_ROSTER.find(t => t.username.toLowerCase() === email.toLowerCase());
+      state.users.push({
+        username: email,
+        role: 'ceo',
+        name: rosterMatch ? rosterMatch.name : (email.split('@')[0].charAt(0).toUpperCase() + email.split('@')[0].slice(1)),
+        roleTitle: rosterMatch ? rosterMatch.roleTitle : 'Admin / Manager'
+      });
+    } else {
+      u.role = 'ceo';
+      if(!u.roleTitle || u.roleTitle === 'Sales Rep' || u.roleTitle === 'Sales person'){
+        const rosterMatch = TARGET_ROSTER.find(t => t.username.toLowerCase() === email.toLowerCase());
+        u.roleTitle = rosterMatch ? rosterMatch.roleTitle : 'Admin / Manager';
+      }
+    }
+  });
+}
+
 function seedIfEmpty(){
   if(state.users.length===0 && localStorage.getItem(K_USERS) === null){
     state.users = [...TARGET_ROSTER];
   }
+  ensureAdminUsers();
 }
 
 async function seedDemoDataIfEmpty(){
@@ -880,7 +905,9 @@ async function handleGoogleCredentialResponse(response) {
     }
   } catch(e) {}
 
-  // 2. CHECK IF ADMIN (4 Specific Emails Only)
+  ensureAdminUsers();
+
+  // 2. CHECK IF ADMIN (Specific Admin Emails Only)
   const isAdmin = ADMIN_EMAILS.includes(email);
 
   let existingUser = state.users.find(u => u.username.toLowerCase() === email);
@@ -3595,6 +3622,8 @@ async function init(){
       }
     }
 
+    ensureAdminUsers();
+
     if (localSession && localSession.username) {
       const activeUser = state.users.find(x => x.username.toLowerCase() === localSession.username.toLowerCase());
       if (activeUser) {
@@ -3629,6 +3658,7 @@ async function backgroundRemoteSync(){
     ]);
     if (u && Array.isArray(u)) {
       state.users = u;
+      ensureAdminUsers();
       try { localStorage.setItem(K_USERS, JSON.stringify(u)); } catch(e) {}
     }
     if (o && Array.isArray(o) && o.length > 0) state.orders = o;
