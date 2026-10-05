@@ -198,30 +198,38 @@ input[type="number"]{ -moz-appearance:textfield; appearance:textfield; }
 const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbwUq60-IGxKcP3bLCxgugC6JF_QYRHLBgmCRURlZ6Sua_Xf1vQhQc5MPFcshqSmUA53dQ/exec';
 const K_USERS='crm:users', K_ORDERS='crm:orders', K_COORD='crm:coordination', K_LOST='crm:lostorders', K_ACTIVITY='crm:activity', K_SESSION='crm:session';
 
-async function storageGet(key){
+async function storageGet(key, retries = 2){
   let localData = null;
   try {
     const raw = localStorage.getItem(key);
     if (raw) localData = JSON.parse(raw);
   } catch(e) {}
 
-  try {
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 8000);
-    const fetchUrl = APPS_SCRIPT_URL + '?action=get&key=' + encodeURIComponent(key);
-    const response = await fetch(fetchUrl, { redirect: 'follow', signal: controller.signal });
-    clearTimeout(timeoutId);
-    if (response.ok) {
-      const result = await response.json();
-      const val = (result && result.value !== undefined) ? result.value : result;
-      if (val !== null && val !== undefined && val !== '') {
-        const parsed = (typeof val === 'string') ? JSON.parse(val) : val;
-        try { localStorage.setItem(key, JSON.stringify(parsed)); } catch(e) {}
-        return parsed;
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 20000);
+      const fetchUrl = APPS_SCRIPT_URL + '?action=get&key=' + encodeURIComponent(key);
+      const response = await fetch(fetchUrl, { redirect: 'follow', signal: controller.signal });
+      clearTimeout(timeoutId);
+      if (response.ok) {
+        const text = await response.text();
+        if (text && (text.trim().startsWith('{') || text.trim().startsWith('['))) {
+          const result = JSON.parse(text);
+          const val = (result && result.value !== undefined) ? result.value : result;
+          if (val !== null && val !== undefined && val !== '') {
+            const parsed = (typeof val === 'string') ? JSON.parse(val) : val;
+            try { localStorage.setItem(key, JSON.stringify(parsed)); } catch(e) {}
+            return parsed;
+          }
+        }
+      }
+    } catch(e) {
+      console.warn(`storageGet attempt ${attempt + 1} failed for ${key}:`, e);
+      if (attempt < retries) {
+        await new Promise(r => setTimeout(r, 1000 * (attempt + 1)));
       }
     }
-  } catch(e) {
-    // Timeout or fetch error fallback to localData
   }
 
   return localData;
@@ -253,6 +261,9 @@ let state = {
   users: [], orders: [], coordination: [], lostOrders: [], activity: {},
   currentUser: null,
   loaded:false,
+  syncStatus:'idle', // 'idle' | 'syncing' | 'synced' | 'error'
+  lastSyncTime: null,
+  syncErrorMsg: '',
   topTab:'mypage',
   activeTab:'dashboard',
   statsRange:'week',
@@ -268,6 +279,32 @@ let state = {
   reportRangeMode: 'weekly', reportRangeFrom: null, reportRangeTo: null,
   summaryProductSort: 'value-desc'
 };
+
+function matchSalesPerson(sp, targetUsername){
+  if (!sp || !targetUsername) return false;
+  const s = String(sp).trim().toLowerCase();
+  const u = String(targetUsername).trim().toLowerCase();
+  if (s === u) return true;
+
+  const emailPrefix = u.split('@')[0];
+  if (s === emailPrefix) return true;
+
+  const MAP = {
+    'raju': ['krishnamraju@patilgroup.com', 'krishnamraju', 'raju', 'grk raju'],
+    'saurabh': ['saurabhsamya@patilgroup.com', 'saurabhsamya', 'saurabh'],
+    'ramchandra': ['ramchandra.s@patilgroup.com', 'ramchandra.s', 'ramchandra'],
+    'rahul': ['rahul.s@patilgroup.com', 'rahul.s', 'rahul'],
+    'rohit': ['rahul.s@patilgroup.com', 'rahul.s', 'rohit', 'ramchandra.s@patilgroup.com'],
+    'sid': ['siddharth@patilgroup.com', 'siddharth'],
+    'vitrang': ['vitrang@patilgroup.com', 'vitrang'],
+    'francis': ['francisyakobu@patilgroup.com', 'francisyakobu', 'francis']
+  };
+
+  if (MAP[s] && MAP[s].some(x => x === u || x === emailPrefix)) return true;
+  if (MAP[emailPrefix] && MAP[emailPrefix].includes(s)) return true;
+
+  return s.includes(emailPrefix) || emailPrefix.includes(s);
+}
 
 const ACTIVE_WINDOW_MIN = 60; // a rep counts as "in field" if seen within this many minutes
 
@@ -726,7 +763,7 @@ function lastSeenLabel(username){
   return `Last seen ${fmtDate(new Date(a.lastSeen).toISOString().slice(0,10))}`;
 }
 function nextFollowUpFor(username){
-  const open = state.orders.filter(o=>o.salesPerson===username && !o.dealStage.startsWith('9.') && !o.dealStage.startsWith('10.') && o.followUpDate);
+  const open = state.orders.filter(o=>matchSalesPerson(o.salesPerson, username) && !o.dealStage.startsWith('9.') && !o.dealStage.startsWith('10.') && o.followUpDate);
   if(!open.length) return null;
   return open.slice().sort((a,b)=>(a.followUpDate||'9999').localeCompare(b.followUpDate||'9999'))[0];
 }
@@ -735,14 +772,15 @@ function nextFollowUpFor(username){
 function myOrders(){
   if(!state.currentUser) return [];
   if(state.currentUser.role==='ceo'){
-    if(state.viewingAsRep) return state.orders.filter(o=>o.salesPerson===state.viewingAsRep);
+    if(state.viewingAsRep) return state.orders.filter(o=>matchSalesPerson(o.salesPerson, state.viewingAsRep));
     if(state.topTab==='team') return state.orders; // Team tab overview — team-wide
-    return state.orders.filter(o=>o.salesPerson===state.currentUser.username); // CEO's own My Page — own leads only, like a rep
+    return state.orders.filter(o=>matchSalesPerson(o.salesPerson, state.currentUser.username)); // CEO's own My Page — own leads only, like a rep
   }
-  return state.orders.filter(o=>o.salesPerson===state.currentUser.username);
+  return state.orders.filter(o=>matchSalesPerson(o.salesPerson, state.currentUser.username));
 }
 function repName(username){
-  const u = state.users.find(u=>u.username===username);
+  if(!username) return '—';
+  const u = state.users.find(u=>matchSalesPerson(username, u.username));
   return u ? u.name : username;
 }
 /* Human-readable lead source detail for a saved order: the plain name, the free-text "Others"
@@ -1030,6 +1068,46 @@ async function doLogout(){
 }
 
 
+function renderSyncIndicator(){
+  let icon = '';
+  let label = '';
+  let badgeStyle = '';
+
+  if (state.syncStatus === 'syncing') {
+    icon = '<span class="sync-spinner" style="display:inline-block;animation:spin 1.2s linear infinite;">⚙️</span>';
+    label = 'Syncing Sheet...';
+    badgeStyle = 'background:rgba(214, 91, 40, 0.25);border:1px solid #d65b28;color:#ffe8db;';
+  } else if (state.syncStatus === 'synced') {
+    const timeStr = state.lastSyncTime ? new Date(state.lastSyncTime).toLocaleTimeString('en-IN', {hour:'2-digit', minute:'2-digit'}) : 'Just now';
+    icon = '🟢';
+    label = `Synced (${timeStr})`;
+    badgeStyle = 'background:rgba(47, 107, 71, 0.35);border:1px solid #4ade80;color:#e3eee2;';
+  } else if (state.syncStatus === 'error') {
+    icon = '🔴';
+    label = 'Offline / Local Mode';
+    badgeStyle = 'background:rgba(166, 58, 47, 0.35);border:1px solid #f87171;color:#f5e2de;';
+  } else {
+    icon = '⚪';
+    label = 'Sheet Sync Ready';
+    badgeStyle = 'background:rgba(255,255,255,0.15);border:1px solid rgba(255,255,255,0.3);color:#fff;';
+  }
+
+  return `
+  <style>@keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }</style>
+  <div style="display:inline-flex;align-items:center;gap:6px;padding:4px 10px;border-radius:20px;font-size:11px;font-family:var(--font-mono);font-weight:600;${badgeStyle}" title="${esc(state.syncErrorMsg || 'Google Apps Script Live Sync Status')}">
+    <span>${icon}</span>
+    <span>${label}</span>
+    <button onclick="triggerManualSync()" style="background:none;border:none;color:inherit;cursor:pointer;padding:0;margin-left:4px;font-size:12px;display:inline-flex;align-items:center;" title="Force Sync Now">🔄</button>
+  </div>
+  `;
+}
+
+async function triggerManualSync(){
+  state.syncStatus = 'syncing';
+  render();
+  await backgroundRemoteSync(true);
+}
+
 /* ================= SHELL ================= */
 function renderShell(){
   const u = state.currentUser;
@@ -1066,6 +1144,7 @@ function renderShell(){
       </div>
     </div>
     <div class="who">
+      ${renderSyncIndicator()}
       <button class="btn btn-primary" onclick="openOrderModal()">+ New Lead</button>
       <div class="avatar">${esc(initials)}</div>
       <div><div class="name">${esc(u.name)}</div><div class="role">${esc(u.roleTitle || (u.role==='ceo'?'CEO / Manager':'Sales person'))}</div></div>
@@ -1403,9 +1482,9 @@ function renderDashboard(isMyPipeline = false){
   
   let orders;
   if(isMyPipeline) {
-    orders = state.orders.filter(o=>o.salesPerson===u.username);
+    orders = state.orders.filter(o=>matchSalesPerson(o.salesPerson, u.username));
   } else {
-    orders = viewAsRepMode ? state.orders.filter(o=>o.salesPerson===viewAsUsername) : myOrders();
+    orders = viewAsRepMode ? state.orders.filter(o=>matchSalesPerson(o.salesPerson, viewAsUsername)) : myOrders();
   }
   let overdueLeads = getOverdueLeads(orders);
   overdueLeads = applyDashFilters(overdueLeads);
@@ -1559,7 +1638,7 @@ async function downloadAllLeads(filterData){
   if(typeof XLSX==='undefined'){ alert('Excel export library did not load — check your internet connection and try again.'); return; }
   const isCeo = state.currentUser.role==='ceo';
   const viewAsUsername = isCeo ? state.viewingAsRep : null;
-  let orders = viewAsUsername ? state.orders.filter(o=>o.salesPerson===viewAsUsername) : myOrders();
+  let orders = viewAsUsername ? state.orders.filter(o=>matchSalesPerson(o.salesPerson, viewAsUsername)) : myOrders();
   if (filterData) {
     orders = orders.filter(o => filterByDateRange(o.dateLogged, filterData));
   }
@@ -1608,7 +1687,7 @@ function applyDashFilters(orders){
   const repEl = document.getElementById('dash-rep-filter');
   let out = orders.slice().sort((a,b)=> (b.dateLogged||'').localeCompare(a.dateLogged||''));
   if(stageEl && stageEl.value) out = out.filter(o=>o.dealStage===stageEl.value);
-  if(repEl && repEl.value) out = out.filter(o=>o.salesPerson===repEl.value);
+  if(repEl && repEl.value) out = out.filter(o=>matchSalesPerson(o.salesPerson, repEl.value));
   if(state.dashPriorityFilter) out = out.filter(o=>o.priority===state.dashPriorityFilter);
   if(state.dashSortValue) {
     out.sort((a,b) => {
@@ -3247,7 +3326,7 @@ function setStatsDateTo(v){ state.statsDateTo=v; render(); }
 function setReportRangeMode(v){ state.reportRangeMode=v; render(); }
 
 function filteredOrdersFor(username){
-  const orders = state.orders.filter(o=>o.salesPerson===username);
+  const orders = state.orders.filter(o=>matchSalesPerson(o.salesPerson, username));
   const range = state.statsRange;
   return range==='all' ? orders : orders.filter(o=>inRange(o.dateLogged, range, state.statsDate));
 }
@@ -3626,21 +3705,13 @@ async function init(){
     if (Array.isArray(localUsers) && localUsers.length > 0) {
       state.users = localUsers;
     } else {
-      let remoteUsers = null;
-      try {
-        remoteUsers = await storageGet(K_USERS);
-      } catch(e) {}
-      if (Array.isArray(remoteUsers) && remoteUsers.length > 0) {
-        state.users = remoteUsers;
-      } else {
-        state.users = [...TARGET_ROSTER];
-      }
+      state.users = [...TARGET_ROSTER];
     }
 
     ensureAdminUsers();
 
     if (localSession && localSession.username) {
-      const activeUser = state.users.find(x => x.username.toLowerCase() === localSession.username.toLowerCase());
+      const activeUser = state.users.find(x => matchSalesPerson(x.username, localSession.username));
       if (activeUser) {
         state.currentUser = activeUser;
         if (localSession.topTab) state.topTab = localSession.topTab;
@@ -3653,36 +3724,79 @@ async function init(){
     console.error('Error loading local state:', e);
   }
 
-  seedIfEmpty();
+  // Fall back to demo dataset if orders is empty so live users never see 0 offers on load
+  if (!state.orders || state.orders.length === 0) {
+    await runSeed();
+  }
+
   state.loaded = true;
   render();
 
-  // Non-blocking background sync with Apps Script
+  // Sequential background sync with Apps Script
   backgroundRemoteSync();
 }
 
-async function backgroundRemoteSync(){
+async function backgroundRemoteSync(isManual = false){
+  state.syncStatus = 'syncing';
+  state.syncErrorMsg = '';
+  render();
+
   try {
-    const [u, o, c, l, a, s] = await Promise.all([
-      storageGet(K_USERS),
-      storageGet(K_ORDERS),
-      storageGet(K_COORD),
-      storageGet(K_LOST),
-      storageGet(K_ACTIVITY),
-      storageGet(K_SESSION)
-    ]);
-    if (u && Array.isArray(u)) {
+    // Fetch keys sequentially with 150ms delay to avoid Google Apps Script request throttling
+    const u = await storageGet(K_USERS);
+    await new Promise(r => setTimeout(r, 150));
+
+    const o = await storageGet(K_ORDERS);
+    await new Promise(r => setTimeout(r, 150));
+
+    const c = await storageGet(K_COORD);
+    await new Promise(r => setTimeout(r, 150));
+
+    const l = await storageGet(K_LOST);
+    await new Promise(r => setTimeout(r, 150));
+
+    const a = await storageGet(K_ACTIVITY);
+    await new Promise(r => setTimeout(r, 150));
+
+    const s = await storageGet(K_SESSION);
+
+    let updated = false;
+
+    if (u && Array.isArray(u) && u.length > 0) {
       state.users = u;
       ensureAdminUsers();
       try { localStorage.setItem(K_USERS, JSON.stringify(u)); } catch(e) {}
+      updated = true;
     }
-    if (o && Array.isArray(o) && o.length > 0) state.orders = o;
-    if (c && Array.isArray(c)) state.coordination = c;
-    if (l && Array.isArray(l)) state.lostOrders = l;
-    if (a && typeof a === 'object') state.activity = a;
+
+    if (o && Array.isArray(o) && o.length > 0) {
+      state.orders = o;
+      try { localStorage.setItem(K_ORDERS, JSON.stringify(o)); } catch(e) {}
+      updated = true;
+    } else if (state.orders && state.orders.length > 0) {
+      // If Apps Script returns empty, push local state up to Google Apps Script
+      storageSet(K_ORDERS, state.orders);
+    }
+
+    if (c && Array.isArray(c)) {
+      state.coordination = c;
+      try { localStorage.setItem(K_COORD, JSON.stringify(c)); } catch(e) {}
+      updated = true;
+    }
+
+    if (l && Array.isArray(l)) {
+      state.lostOrders = l;
+      try { localStorage.setItem(K_LOST, JSON.stringify(l)); } catch(e) {}
+      updated = true;
+    }
+
+    if (a && typeof a === 'object') {
+      state.activity = a;
+      try { localStorage.setItem(K_ACTIVITY, JSON.stringify(a)); } catch(e) {}
+    }
 
     if (s && s.username && !state.currentUser) {
-      const activeUser = state.users.find(x => x.username.toLowerCase() === s.username.toLowerCase());
+      const activeUser = state.users.find(x => matchSalesPerson(x.username, s.username));
       if (activeUser) {
         state.currentUser = activeUser;
         if (s.topTab) state.topTab = s.topTab;
@@ -3691,8 +3805,16 @@ async function backgroundRemoteSync(){
         if (s.dashboardSubTab) state.dashboardSubTab = s.dashboardSubTab;
       }
     }
+
+    state.syncStatus = 'synced';
+    state.lastSyncTime = Date.now();
     render();
-  } catch(e) {}
+  } catch(e) {
+    console.error('backgroundRemoteSync error:', e);
+    state.syncStatus = 'error';
+    state.syncErrorMsg = e.message || 'Error syncing with Google Sheet';
+    render();
+  }
 }
 init();
 </script>
