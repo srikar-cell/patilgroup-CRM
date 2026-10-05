@@ -619,8 +619,12 @@ async function runSeed(){
   await storageSet(K_USERS, state.users);
 
   const mk = (o) => ({
-    id: uid(), leadSourceType:'Outbound', leadSourceName:'Field visit', clientPOC:'', clientPOCDesignation:'',
-    clientMobile:'', clientEmail:'', product:'Building Product (Precast), Slabs', location:'', priority:'Warm',
+    id: uid(), leadSourceType:'Outbound', leadSourceName:'Field visit',
+    clientPOC: o.clientPOC || 'Client POC Contact',
+    clientPOCDesignation: o.clientPOCDesignation || 'Purchase Manager',
+    clientMobile: o.clientMobile || '9876543210',
+    clientEmail: o.clientEmail || 'contact@client.com',
+    product:'Building Product (Precast), Slabs', location:'', priority:'Warm',
     stageChangedDate:'', reasonLostWon:'', closedDate:'', followUpDate:'', nextAction:'', updates:[],
     nextActionChangedDate:'', actionHistory:[], followUpHistory:[], stageHistory:[], ...o
   });
@@ -1067,47 +1071,6 @@ async function doLogout(){
   render();
 }
 
-
-function renderSyncIndicator(){
-  let icon = '';
-  let label = '';
-  let badgeStyle = '';
-
-  if (state.syncStatus === 'syncing') {
-    icon = '<span class="sync-spinner" style="display:inline-block;animation:spin 1.2s linear infinite;">⚙️</span>';
-    label = 'Syncing Sheet...';
-    badgeStyle = 'background:rgba(214, 91, 40, 0.25);border:1px solid #d65b28;color:#ffe8db;';
-  } else if (state.syncStatus === 'synced') {
-    const timeStr = state.lastSyncTime ? new Date(state.lastSyncTime).toLocaleTimeString('en-IN', {hour:'2-digit', minute:'2-digit'}) : 'Just now';
-    icon = '🟢';
-    label = `Synced (${timeStr})`;
-    badgeStyle = 'background:rgba(47, 107, 71, 0.35);border:1px solid #4ade80;color:#e3eee2;';
-  } else if (state.syncStatus === 'error') {
-    icon = '🔴';
-    label = 'Offline / Local Mode';
-    badgeStyle = 'background:rgba(166, 58, 47, 0.35);border:1px solid #f87171;color:#f5e2de;';
-  } else {
-    icon = '⚪';
-    label = 'Sheet Sync Ready';
-    badgeStyle = 'background:rgba(255,255,255,0.15);border:1px solid rgba(255,255,255,0.3);color:#fff;';
-  }
-
-  return `
-  <style>@keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }</style>
-  <div style="display:inline-flex;align-items:center;gap:6px;padding:4px 10px;border-radius:20px;font-size:11px;font-family:var(--font-mono);font-weight:600;${badgeStyle}" title="${esc(state.syncErrorMsg || 'Google Apps Script Live Sync Status')}">
-    <span>${icon}</span>
-    <span>${label}</span>
-    <button onclick="triggerManualSync()" style="background:none;border:none;color:inherit;cursor:pointer;padding:0;margin-left:4px;font-size:12px;display:inline-flex;align-items:center;" title="Force Sync Now">🔄</button>
-  </div>
-  `;
-}
-
-async function triggerManualSync(){
-  state.syncStatus = 'syncing';
-  render();
-  await backgroundRemoteSync(true);
-}
-
 /* ================= SHELL ================= */
 function renderShell(){
   const u = state.currentUser;
@@ -1144,7 +1107,6 @@ function renderShell(){
       </div>
     </div>
     <div class="who">
-      ${renderSyncIndicator()}
       <button class="btn btn-primary" onclick="openOrderModal()">+ New Lead</button>
       <div class="avatar">${esc(initials)}</div>
       <div><div class="name">${esc(u.name)}</div><div class="role">${esc(u.roleTitle || (u.role==='ceo'?'CEO / Manager':'Sales person'))}</div></div>
@@ -1701,14 +1663,17 @@ function applyDashFilters(orders){
 function renderOrdersTable(orders, showRep){
   if(!orders.length) return `<div class="empty">No orders yet. Click "New Lead" to log your first offer.</div>`;
   return `<div class="table-wrap" data-rkey="orders-table"><table>
-    <tr><th class="num-cell">S.No</th><th>Offer ID</th><th>Client</th>${showRep?'<th>Rep</th>':''}<th>Stage</th><th>Priority</th><th>Open Pipeline Value (INR CR)</th><th>Next Follow-up date</th><th>Last Action name</th><th>Type of Action</th><th class="num-cell">Last Action delay (days)</th><th>Delay Type</th><th>Reason for delay</th><th class="num-cell">Total offer cycle time (days)</th></tr>
+    <tr><th class="num-cell">S.No</th><th>Offer ID</th><th>Client</th><th>POC Info</th>${showRep?'<th>Rep</th>':''}<th>Stage</th><th>Priority</th><th>Open Pipeline Value (INR CR)</th><th>Next Follow-up date</th><th>Last Action name</th><th>Type of Action</th><th class="num-cell">Last Action delay (days)</th><th>Delay Type</th><th>Reason for delay</th><th class="num-cell">Total offer cycle time (days)</th></tr>
     ${orders.map((o,idx)=>{
       const lf = lastFollowUp(o);
+      const pocText = [o.clientPOC, o.clientPOCDesignation].filter(Boolean).join(' - ') || '—';
+      const contactText = [o.clientMobile, o.clientEmail].filter(Boolean).join(' | ');
       return `
       <tr class="clickable" title="Double-click for full deal cycle" ondblclick="openDealCycle('${o.id}')">
         <td class="mono num-cell" style="font-size:11px;color:var(--muted);text-align:center;">${idx+1}</td>
         <td class="mono" style="font-size:11px;color:var(--muted);">${o.id}</td>
         <td style="min-width:170px;"><b>${esc(o.clientName)}</b><br><span style="color:var(--muted);font-size:11.5px;">${esc(o.projectName||'')}</span></td>
+        <td style="min-width:160px;font-size:12px;"><b>${esc(pocText)}</b>${contactText?`<br><span style="color:var(--muted);font-size:11px;">${esc(contactText)}</span>`:''}</td>
         ${showRep?`<td>${esc(repName(o.salesPerson))}</td>`:''}
         <td>${badgeForStage(o.dealStage)}</td>
         <td>${badgeForPriority(o.priority)}</td>
@@ -1739,6 +1704,10 @@ function buildMasterDataRows(orders){
     return {
       'Client': o.clientName||'',
       'Project': o.projectName||'',
+      'Client POC': o.clientPOC||'',
+      'POC Designation': o.clientPOCDesignation||'',
+      'Client Mobile': o.clientMobile||'',
+      'Client Email': o.clientEmail||'',
       'Sales Person': repName(o.salesPerson),
       'Lead Source': o.leadSourceType||'',
       'Lead Source Detail': leadSourceDetailLabel(o),
@@ -1808,6 +1777,8 @@ function setDealCycleDelayTypeFilter(v){ state.dealCycleDelayTypeFilter = v; ren
 function buildDealCycleSheets(o){
   const overview = [{
     'Client': o.clientName||'', 'Project': o.projectName||'', 'Sales Person': repName(o.salesPerson),
+    'Client POC': o.clientPOC||'', 'POC Designation': o.clientPOCDesignation||'',
+    'Client Mobile': o.clientMobile||'', 'Client Email': o.clientEmail||'',
     'Product': o.product||'', 'Project Type': o.projectType||'', 'Location': o.location||'',
     'Estimated Value (Cr)': o.estimatedValue||0, 'Priority': o.priority||'',
     'Current Stage': o.dealStage||'', 'Lead Received Date': o.dateLogged||'', 'Closed Date': o.closedDate||'',
