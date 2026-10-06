@@ -2,6 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <title>Sales Pipeline CRM</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -188,6 +189,50 @@
 input[type="number"]::-webkit-outer-spin-button,
 input[type="number"]::-webkit-inner-spin-button{ -webkit-appearance:none; margin:0; }
 input[type="number"]{ -moz-appearance:textfield; appearance:textfield; }
+
+/* ---------- Mobile & Tablet Responsive Enhancements ---------- */
+@media (max-width: 768px) {
+  #app { padding: 0 10px 40px; }
+  .topbar {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 12px;
+    padding: 12px 14px;
+    margin: 0 -10px 14px;
+    border-radius: 0 0 6px 6px;
+  }
+  .brand { flex-wrap: wrap; width: 100%; justify-content: space-between; }
+  .who { width: 100%; justify-content: space-between; flex-wrap: wrap; gap: 8px; }
+  .who .name { font-size: 12px; }
+  .who .role { font-size: 10px; }
+  .stat-grid { grid-template-columns: repeat(2, 1fr); gap: 8px; margin-bottom: 14px; }
+  .stat-card { padding: 10px 12px; }
+  .stat-card .value { font-size: 18px; }
+  .stat-card .label { font-size: 10px; }
+  .tabs { padding: 3px; border-radius: 16px; margin-bottom: 14px; }
+  .tab { padding: 7px 12px; font-size: 12px; }
+  .filter-bar { gap: 6px; }
+  .filter-bar select, .filter-bar input[type=date], .filter-bar input[type=text] {
+    flex: 1 1 100%;
+    width: 100%;
+    font-size: 13px;
+  }
+  .modal {
+    width: 96%;
+    padding: 16px 18px;
+    margin: 10px auto;
+    max-height: 90vh;
+  }
+  .modal-bg { padding: 10px 8px; }
+  .grid2 { grid-template-columns: 1fr; gap: 10px; }
+  .table-wrap { max-height: calc(100vh - 200px); }
+  th, td { padding: 8px 10px; font-size: 12px; }
+}
+@media (max-width: 480px) {
+  .stat-grid { grid-template-columns: 1fr; }
+  .login-card { width: 100%; padding: 24px 18px; }
+  .brand h1 { font-size: 18px; }
+}
 </style>
 </head>
 <body>
@@ -1499,15 +1544,6 @@ function renderDashboard(isMyPipeline = false){
       <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;">
         <div><b>Viewing ${esc(repName(viewAsUsername))}'s page</b><span style="color:var(--muted);font-size:12px;"> — signed in as CEO / Manager, read access only</span></div>
         <button class="btn" onclick="backToTeamOverview()">\u2190 Back to team overview</button>
-      </div>
-    </div>`;
-  }
-
-  if(!isCeo && orders.length<=3){
-    html += `<div class="card" style="margin-bottom:16px;background:var(--amber-bg);border-color:var(--amber);">
-      <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;">
-        <div style="font-size:13px;color:var(--amber-text,var(--text));"><b>Only ${orders.length} offer${orders.length===1?'':'s'} showing.</b> If you were expecting the full sample dataset, your browser likely kept an older, smaller set of test entries from before.</div>
-        <button class="btn btn-primary" onclick="forceReseed()">Reload sample data</button>
       </div>
     </div>`;
   }
