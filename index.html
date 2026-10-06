@@ -1016,14 +1016,6 @@ async function handleGoogleCredentialResponse(response) {
     return;
   }
 
-  // Fetch latest users from remote storage if available
-  try {
-    const remoteUsers = await storageGet(K_USERS);
-    if (Array.isArray(remoteUsers) && remoteUsers.length > 0) {
-      state.users = remoteUsers;
-    }
-  } catch(e) {}
-
   ensureAdminUsers();
 
   // 2. CHECK IF ADMIN (Specific Admin Emails Only)
@@ -1126,23 +1118,25 @@ async function saveSession(){
   }
 }
 
-async function startSession(user){
+function startSession(user){
   state.currentUser=user; state.topTab=(user.role==='ceo'?'summary':'mypage'); state.activeTab='dashboard'; state.viewingAsRep=null;
-  await saveSession();
+  try { localStorage.setItem(K_SESSION, JSON.stringify({ username: user.username, topTab: state.topTab, activeTab: state.activeTab, viewingAsRep: null, dashboardSubTab: state.dashboardSubTab })); } catch(e){}
   render();
+  saveSession();
   pingActivity();
   if(window.__pingTimer) clearInterval(window.__pingTimer);
   window.__pingTimer = setInterval(pingActivity, 5*60*1000);
 }
 
-async function doLogout(){
+function doLogout(){
   state.currentUser=null;
   state.viewingAsRep=null;
   state.topTab='mypage';
   state.loginError='';
   if(window.__pingTimer) clearInterval(window.__pingTimer);
-  await saveSession();
+  try { localStorage.removeItem(K_SESSION); } catch(e){}
   render();
+  saveSession();
 }
 
 /* ================= SHELL ================= */
