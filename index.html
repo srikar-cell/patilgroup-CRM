@@ -208,7 +208,7 @@ async function storageGet(key, retries = 2){
   for (let attempt = 0; attempt <= retries; attempt++) {
     try {
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 20000);
+      const timeoutId = setTimeout(() => controller.abort(), 15000);
       const fetchUrl = APPS_SCRIPT_URL + '?action=get&key=' + encodeURIComponent(key);
       const response = await fetch(fetchUrl, { redirect: 'follow', signal: controller.signal });
       clearTimeout(timeoutId);
@@ -227,7 +227,7 @@ async function storageGet(key, retries = 2){
     } catch(e) {
       console.warn(`storageGet attempt ${attempt + 1} failed for ${key}:`, e);
       if (attempt < retries) {
-        await new Promise(r => setTimeout(r, 1000 * (attempt + 1)));
+        await new Promise(r => setTimeout(r, 800 * (attempt + 1)));
       }
     }
   }
@@ -235,25 +235,106 @@ async function storageGet(key, retries = 2){
   return localData;
 }
 
-async function storageSet(key, val){
+async function storageSet(key, val, retries = 2){
   try {
     localStorage.setItem(key, JSON.stringify(val));
   } catch(e) {
     console.error('localStorage set error', key, e);
   }
 
-  try {
-    const payload = JSON.stringify({ action: 'set', key: key, value: val });
-    const fetchUrl = APPS_SCRIPT_URL + '?action=set&key=' + encodeURIComponent(key);
-    fetch(fetchUrl, {
-      method: 'POST',
-      mode: 'no-cors',
-      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-      body: payload
-    }).catch(err => console.warn('Google Apps Script sync error:', err));
-  } catch(e) {
-    console.warn('Google Apps Script storageSet warning:', key, e);
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    try {
+      const payload = JSON.stringify({ action: 'set', key: key, value: val });
+      const fetchUrl = APPS_SCRIPT_URL + '?action=set&key=' + encodeURIComponent(key);
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 20000);
+      const response = await fetch(fetchUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+        redirect: 'follow',
+        signal: controller.signal,
+        body: payload
+      });
+      clearTimeout(timeoutId);
+      if (response.ok) {
+        state.lastSyncTime = Date.now();
+        state.syncStatus = 'synced';
+        return true;
+      }
+    } catch(e) {
+      console.warn(`storageSet attempt ${attempt + 1} failed for ${key}:`, e);
+      if (attempt < retries) {
+        await new Promise(r => setTimeout(r, 1000 * (attempt + 1)));
+      }
+    }
   }
+
+  state.syncStatus = 'error';
+  state.syncErrorMsg = 'Cloud sync pending...';
+  return false;
+}
+
+function exportData(){
+  const dump = {
+    version: '1.0',
+    exportDate: new Date().toISOString(),
+    users: state.users,
+    orders: state.orders,
+    coordination: state.coordination,
+    lostOrders: state.lostOrders,
+    activity: state.activity
+  };
+  const blob = new Blob([JSON.stringify(dump, null, 2)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `patilgroup_crm_backup_${new Date().toISOString().slice(0,10)}.json`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+function triggerImportData(){
+  const fileInput = document.createElement('input');
+  fileInput.type = 'file';
+  fileInput.accept = '.json';
+  fileInput.onchange = async (e) => {
+    const file = e.target.files[0];
+    if(!file) return;
+    try {
+      const text = await file.text();
+      const dump = JSON.parse(text);
+      let count = 0;
+      if (Array.isArray(dump.orders) && dump.orders.length > 0) {
+        state.orders = dump.orders;
+        await storageSet(K_ORDERS, state.orders);
+        count = dump.orders.length;
+      }
+      if (Array.isArray(dump.users) && dump.users.length > 0) {
+        state.users = dump.users;
+        ensureAdminUsers();
+        await storageSet(K_USERS, state.users);
+      }
+      if (Array.isArray(dump.coordination)) {
+        state.coordination = dump.coordination;
+        await storageSet(K_COORD, state.coordination);
+      }
+      if (Array.isArray(dump.lostOrders)) {
+        state.lostOrders = dump.lostOrders;
+        await storageSet(K_LOST, state.lostOrders);
+      }
+      if (dump.activity && typeof dump.activity === 'object') {
+        state.activity = dump.activity;
+        await storageSet(K_ACTIVITY, state.activity);
+      }
+      alert(`Success! Imported ${count} leads and synchronized across all devices.`);
+      render();
+    } catch(err) {
+      alert('Error importing data file: ' + err.message);
+    }
+  };
+  fileInput.click();
 }
 
 /* ================= STATE ================= */
@@ -1106,7 +1187,15 @@ function renderShell(){
         <div class="tag">Pipeline control — B2B infrastructure sales tracker</div>
       </div>
     </div>
-    <div class="who">
+    <div class="who" style="display:flex;align-items:center;gap:10px;">
+      <div class="sync-badge" style="display:flex;align-items:center;gap:6px;font-family:var(--font-mono);font-size:11.5px;padding:5px 10px;border-radius:6px;background:rgba(255,255,255,0.15);color:#fff;border:1px solid rgba(255,255,255,0.25);">
+        ${state.syncStatus === 'syncing' ? '<span style="color:#fcd34d;">🔄 Syncing...</span>' :
+          state.syncStatus === 'error' ? '<span style="color:#f87171;">🔴 Cloud Error</span>' :
+          '<span style="color:#4ade80;">🟢 Cloud Synced</span>'}
+        <button class="btn" style="padding:3px 8px;font-size:11px;background:rgba(255,255,255,0.2);color:#fff;border-color:rgba(255,255,255,0.3);" onclick="backgroundRemoteSync(true)" title="Force sync with cloud database">Sync Now</button>
+      </div>
+      <button class="btn" style="background:#ffffff;color:#79282d;font-weight:600;border:1px solid #ffffff;" onclick="exportData()" title="Export database to JSON file">⬇ Export Data</button>
+      <button class="btn" style="background:#ffffff;color:#79282d;font-weight:600;border:1px solid #ffffff;" onclick="triggerImportData()" title="Import database from JSON file">⬆ Import Data</button>
       <button class="btn btn-primary" onclick="openOrderModal()">+ New Lead</button>
       <div class="avatar">${esc(initials)}</div>
       <div><div class="name">${esc(u.name)}</div><div class="role">${esc(u.roleTitle || (u.role==='ceo'?'CEO / Manager':'Sales person'))}</div></div>
@@ -3655,6 +3744,7 @@ async function removeRep(username){
 
 /* ================= INIT ================= */
 async function init(){
+  state.syncStatus = 'syncing';
   try {
     const u = localStorage.getItem(K_USERS);
     const o = localStorage.getItem(K_ORDERS);
@@ -3695,16 +3785,17 @@ async function init(){
     console.error('Error loading local state:', e);
   }
 
-  // Fall back to demo dataset if orders is empty so live users never see 0 offers on load
-  if (!state.orders || state.orders.length === 0) {
-    await runSeed();
-  }
-
   state.loaded = true;
   render();
 
-  // Sequential background sync with Apps Script
-  backgroundRemoteSync();
+  // Try loading from remote cloud storage first
+  await backgroundRemoteSync();
+
+  // Only seed demo data if state.orders is completely empty after cloud sync attempt
+  if (!state.orders || state.orders.length === 0) {
+    await runSeed();
+    render();
+  }
 }
 
 async function backgroundRemoteSync(isManual = false){
@@ -3713,21 +3804,20 @@ async function backgroundRemoteSync(isManual = false){
   render();
 
   try {
-    // Fetch keys sequentially with 150ms delay to avoid Google Apps Script request throttling
     const u = await storageGet(K_USERS);
-    await new Promise(r => setTimeout(r, 150));
+    await new Promise(r => setTimeout(r, 100));
 
     const o = await storageGet(K_ORDERS);
-    await new Promise(r => setTimeout(r, 150));
+    await new Promise(r => setTimeout(r, 100));
 
     const c = await storageGet(K_COORD);
-    await new Promise(r => setTimeout(r, 150));
+    await new Promise(r => setTimeout(r, 100));
 
     const l = await storageGet(K_LOST);
-    await new Promise(r => setTimeout(r, 150));
+    await new Promise(r => setTimeout(r, 100));
 
     const a = await storageGet(K_ACTIVITY);
-    await new Promise(r => setTimeout(r, 150));
+    await new Promise(r => setTimeout(r, 100));
 
     const s = await storageGet(K_SESSION);
 
@@ -3745,8 +3835,8 @@ async function backgroundRemoteSync(isManual = false){
       try { localStorage.setItem(K_ORDERS, JSON.stringify(o)); } catch(e) {}
       updated = true;
     } else if (state.orders && state.orders.length > 0) {
-      // If Apps Script returns empty, push local state up to Google Apps Script
-      storageSet(K_ORDERS, state.orders);
+      // Push local state up to Google Apps Script if remote is empty
+      await storageSet(K_ORDERS, state.orders);
     }
 
     if (c && Array.isArray(c)) {
@@ -3780,11 +3870,13 @@ async function backgroundRemoteSync(isManual = false){
     state.syncStatus = 'synced';
     state.lastSyncTime = Date.now();
     render();
+    if (isManual) alert('Cloud Sync Complete! All data is synchronized.');
   } catch(e) {
     console.error('backgroundRemoteSync error:', e);
     state.syncStatus = 'error';
     state.syncErrorMsg = e.message || 'Error syncing with Google Sheet';
     render();
+    if (isManual) alert('Sync Error: ' + state.syncErrorMsg);
   }
 }
 init();
