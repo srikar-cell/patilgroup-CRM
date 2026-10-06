@@ -675,7 +675,7 @@ function activeActionType(order){
    fixes that: if the stored version doesn't match and there's only a small amount of data (≤10
    orders — almost certainly leftover test entries, not real logged deals), it force-refreshes the
    demo set once. Past that threshold, it assumes the data is real and never touches it again. */
-const SEED_VERSION = 'real-data-2026-09-09-force';
+const SEED_VERSION = 'real-data-2026-10-06-full-roster';
 const K_SEEDVER = 'crm:seedVersion';
 
 const GOOGLE_CLIENT_ID = '550341682750-1grelp69ehj4jolkaighik26339hgmtm.apps.googleusercontent.com';
@@ -3822,8 +3822,8 @@ async function init(){
     console.error('Error loading local state:', e);
   }
 
-  // Force seed if missing MES offer or old dataset
-  if (!state.orders || state.orders.length <= 15 || !state.orders.some(o => o.clientName === 'MES' || o.id === 'mugjdj9mwvvxu')) {
+  // Force seed if missing full roster dataset (<70 orders)
+  if (!state.orders || state.orders.length < 70) {
     await runSeed();
   }
 
@@ -3866,12 +3866,12 @@ async function backgroundRemoteSync(isManual = false){
       updated = true;
     }
 
-    if (o && Array.isArray(o) && o.length > 0 && o.some(x => x.clientName === 'MES' || x.id === 'mugjdj9mwvvxu')) {
+    if (o && Array.isArray(o) && o.length >= 70) {
       state.orders = o;
       try { localStorage.setItem(K_ORDERS, JSON.stringify(o)); } catch(e) {}
       updated = true;
     } else if (state.orders && state.orders.length > 0) {
-      // Overwrite remote cloud storage with the 23 screenshot orders
+      // Cloud storage has outdated/incomplete dataset (<70 orders) — overwrite cloud storage with full roster dataset
       await storageSet(K_ORDERS, state.orders);
     }
 
