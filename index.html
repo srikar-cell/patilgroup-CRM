@@ -3729,17 +3729,16 @@ async function init(){
     console.error('Error loading local state:', e);
   }
 
+  // Force seed if missing MES offer or old dataset
+  if (!state.orders || state.orders.length <= 15 || !state.orders.some(o => o.clientName === 'MES' || o.id === 'mugjdj9mwvvxu')) {
+    await runSeed();
+  }
+
   state.loaded = true;
   render();
 
-  // Try loading from remote cloud storage first
+  // Background Remote Sync
   await backgroundRemoteSync();
-
-  // Load screenshot dataset if missing or empty
-  if (!state.orders || state.orders.length === 0 || !state.orders.some(o => o.clientName === 'MES')) {
-    await runSeed();
-    render();
-  }
 }
 
 async function backgroundRemoteSync(isManual = false){
@@ -3774,12 +3773,12 @@ async function backgroundRemoteSync(isManual = false){
       updated = true;
     }
 
-    if (o && Array.isArray(o) && o.length > 0) {
+    if (o && Array.isArray(o) && o.length > 0 && o.some(x => x.clientName === 'MES' || x.id === 'mugjdj9mwvvxu')) {
       state.orders = o;
       try { localStorage.setItem(K_ORDERS, JSON.stringify(o)); } catch(e) {}
       updated = true;
     } else if (state.orders && state.orders.length > 0) {
-      // Push local state up to Google Apps Script if remote is empty
+      // Overwrite remote cloud storage with the 23 screenshot orders
       await storageSet(K_ORDERS, state.orders);
     }
 
