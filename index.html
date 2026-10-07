@@ -1242,6 +1242,10 @@ function renderShell(){
       </div>
     </div>
     <div class="who">
+      <button class="btn" onclick="backgroundRemoteSync(true)" title="Click to synchronize with Google Sheet" style="display:inline-flex;align-items:center;gap:6px;font-size:12px;padding:6px 12px;background:rgba(255,255,255,0.15);border:1px solid rgba(255,255,255,0.3);color:#fff;border-radius:6px;cursor:pointer;white-space:nowrap;">
+        <span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${state.syncStatus==='syncing'?'#f59e0b':(state.syncStatus==='error'?'#ef4444':'#10b981')};"></span>
+        ${state.syncStatus==='syncing'?'Syncing Sheet...':(state.syncStatus==='error'?'Sync Pending (Retry)':'Google Sheet Synced')}
+      </button>
       <button class="btn btn-primary" onclick="openOrderModal()">+ New Lead</button>
       <div class="avatar">${esc(initials)}</div>
       <div><div class="name">${esc(u.name)}</div><div class="role">${esc(u.roleTitle || (u.role==='ceo'?'CEO / Manager':'Sales person'))}</div></div>
@@ -2433,6 +2437,7 @@ function syncDelayGate(prefix){
   dateEl.disabled = locked;
 }
 async function saveQuickUpdate(id){
+  if (state.isSavingOrder) return;
   const order = state.orders.find(o=>o.id===id);
   if(!order) return;
   const wasLost = order.dealStage && order.dealStage.startsWith('10.');
@@ -2463,40 +2468,48 @@ async function saveQuickUpdate(id){
       actionRemarks = state.modal.tempRemarks || (document.getElementById('qf-actionRemarks') ? grab('qf-actionRemarks').trim() : '');
   }
 
-  const actionActualStartDate = state.modal.tempActualStartDate || '';
-  const tracking = computeTrackingUpdates(order, newStage, newNextAction, followUpDate, newActionType, actionDelayReason, actionDelayType, '', actionRemarks, newActionStartDate, newActionEndDate, actionActualStartDate, forceActionClose);
+  state.isSavingOrder = true;
+  const saveBtn = document.querySelector('.modal-actions .btn-primary');
+  if (saveBtn) { saveBtn.disabled = true; saveBtn.innerText = 'Updating...'; }
 
-  order.dealStage = newStage;
-  order.stageChangedDate = tracking.stageChangedDate;
-  order.stageHistory = tracking.stageHistory;
-  order.nextAction = newNextAction;
-  if(newNextAction) {
-    order.actionStartDate = newActionStartDate;
-    order.actionEndDate = newActionEndDate;
-  }
-  order.nextActionChangedDate = tracking.nextActionChangedDate;
-  order.actionHistory = tracking.actionHistory;
-  order.followUpDate = followUpDate;
-  order.followUpHistory = tracking.followUpHistory;
-  order.reasonLostWon = grab('qf-reasonLostWon');
-  order.closedDate = closedDate;
+  try {
+    const actionActualStartDate = state.modal.tempActualStartDate || '';
+    const tracking = computeTrackingUpdates(order, newStage, newNextAction, followUpDate, newActionType, actionDelayReason, actionDelayType, '', actionRemarks, newActionStartDate, newActionEndDate, actionActualStartDate, forceActionClose);
 
-  await storageSet(K_ORDERS, state.orders);
-
-  const nowLost = order.dealStage.startsWith('10.');
-  if(nowLost && !wasLost){
-    const exists = state.lostOrders.find(l=>l.clientName===order.clientName && l.linkedOrderId===order.id);
-    if(!exists){
-      state.lostOrders.push({
-        id: uid(), linkedOrderId: order.id, dateAnalysed: todayStr(),
-        clientName: order.clientName, projectName: order.projectName,
-        estimatedValue: order.estimatedValue, competitorWhoWon:'', rootCause: order.reasonLostWon||'',
-        improvementsRequired:'', actionOwner:'', targetDate:'', status:'Not started', notes:[]
-      });
-      await storageSet(K_LOST, state.lostOrders);
+    order.dealStage = newStage;
+    order.stageChangedDate = tracking.stageChangedDate;
+    order.stageHistory = tracking.stageHistory;
+    order.nextAction = newNextAction;
+    if(newNextAction) {
+      order.actionStartDate = newActionStartDate;
+      order.actionEndDate = newActionEndDate;
     }
+    order.nextActionChangedDate = tracking.nextActionChangedDate;
+    order.actionHistory = tracking.actionHistory;
+    order.followUpDate = followUpDate;
+    order.followUpHistory = tracking.followUpHistory;
+    order.reasonLostWon = grab('qf-reasonLostWon');
+    order.closedDate = closedDate;
+
+    await storageSet(K_ORDERS, state.orders);
+
+    const nowLost = order.dealStage.startsWith('10.');
+    if(nowLost && !wasLost){
+      const exists = state.lostOrders.find(l=>l.clientName===order.clientName && l.linkedOrderId===order.id);
+      if(!exists){
+        state.lostOrders.push({
+          id: uid(), linkedOrderId: order.id, dateAnalysed: todayStr(),
+          clientName: order.clientName, projectName: order.projectName,
+          estimatedValue: order.estimatedValue, competitorWhoWon:'', rootCause: order.reasonLostWon||'',
+          improvementsRequired:'', actionOwner:'', targetDate:'', status:'Not started', notes:[]
+        });
+        await storageSet(K_LOST, state.lostOrders);
+      }
+    }
+    closeModal();
+  } finally {
+    state.isSavingOrder = false;
   }
-  closeModal();
 }
 function renderOrderModal(){
   const d = state.modal.data;
@@ -2919,7 +2932,15 @@ function toggleProductOther(prefix){
 }
 function grab(id){ const el=document.getElementById(id); return el?el.value:''; }
 async function saveOrder(){
-  const d = state.modal.data;
+  if (state.isSavingOrder) return;
+  const d = state.modal ? state.modal.data : null;
+  if (!d) return;
+
+  // Lock order ID immediately on state.modal.data to prevent duplicate entries if submitted twice rapidly
+  if (!d.id) {
+    d.id = uid();
+  }
+
   const wasLost = d.dealStage && d.dealStage.startsWith('10.');
   const newStage = grab('f-dealStage');
   const newNextAction = grab('f-nextAction');
@@ -2973,70 +2994,84 @@ async function saveOrder(){
   if(!emailVal || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailVal)){ alert('A valid POC email is required.'); return; }
   if(!newFollowUpDate && !isClosingNow){ alert('New follow-up date is required (unless the offer is being closed Won or Lost).'); return; }
 
-  const actionActualStartDate = state.modal.tempActualStartDate || '';
-  const tracking = computeTrackingUpdates(d, newStage, newNextAction, newFollowUpDate, newActionType, actionDelayReason, actionDelayType, '', actionRemarks, newActionStartDate, newActionEndDate, actionActualStartDate, forceActionClose);
-  const updated = {
-    id: d.id || uid(),
-    dateLogged: grab('f-dateLogged'),
-    salesPerson: document.getElementById('f-salesPerson') ? grab('f-salesPerson') : d.salesPerson,
-    leadSourceType: grab('f-leadSourceType'),
-    leadSourceName: grab('f-leadSourceName'),
-    leadSourceOther: d.leadSourceName==='Others' ? grab('f-leadSourceOther') : '',
-    leadSourceVisitPath: d.leadSourceName==='Physical Visit / Scouting' ? (d.leadSourceVisitPath||[]) : [],
-    clientName: grab('f-clientName'),
-    clientPOC: grab('f-clientPOC'),
-    clientPOCDesignation: grab('f-clientPOCDesignation'),
-    clientMobile: clientMobile,
-    clientEmail: emailVal,
-    product: product, productOtherDesc: productOtherDesc||'',
-    projectName: grab('f-projectName'),
-    projectType: projectType,
-    location: grab('f-location'),
-    estimatedValue: parseFloat(grab('f-estimatedValue'))||0,
-    priority: grab('f-priority'),
-    dealStage: newStage,
-    stageChangedDate: tracking.stageChangedDate,
-    stageHistory: tracking.stageHistory,
-    nextAction: newNextAction,
-    actionStartDate: newNextAction ? newActionStartDate : '',
-    actionEndDate: newNextAction ? newActionEndDate : '',
-    nextActionChangedDate: tracking.nextActionChangedDate,
-    actionHistory: tracking.actionHistory,
-    followUpDate: newFollowUpDate,
-    followUpHistory: tracking.followUpHistory,
-    reasonLostWon: grab('f-reasonLostWon'),
-    closedDate: closedDate,
-    updates: d.updates || []
-  };
-  const idx = state.orders.findIndex(o=>o.id===updated.id);
-  if(idx>=0) state.orders[idx]=updated; else state.orders.push(updated);
-  await storageSet(K_ORDERS, state.orders);
+  state.isSavingOrder = true;
+  const saveBtn = document.querySelector('.modal-actions .btn-primary');
+  if (saveBtn) { saveBtn.disabled = true; saveBtn.innerText = 'Saving...'; }
 
-  const nowLost = updated.dealStage.startsWith('10.');
-  if(nowLost && !wasLost){
-    const exists = state.lostOrders.find(l=>l.clientName===updated.clientName && l.linkedOrderId===updated.id);
-    if(!exists){
-      state.lostOrders.push({
-        id: uid(), linkedOrderId: updated.id, dateAnalysed: todayStr(),
-        clientName: updated.clientName, projectName: updated.projectName,
-        estimatedValue: updated.estimatedValue, competitorWhoWon:'', rootCause: updated.reasonLostWon||'',
-        improvementsRequired:'', actionOwner:'', targetDate:'', status:'Not started', notes:[]
-      });
-      await storageSet(K_LOST, state.lostOrders);
+  try {
+    const actionActualStartDate = state.modal.tempActualStartDate || '';
+    const tracking = computeTrackingUpdates(d, newStage, newNextAction, newFollowUpDate, newActionType, actionDelayReason, actionDelayType, '', actionRemarks, newActionStartDate, newActionEndDate, actionActualStartDate, forceActionClose);
+    const updated = {
+      id: d.id,
+      dateLogged: grab('f-dateLogged'),
+      salesPerson: document.getElementById('f-salesPerson') ? grab('f-salesPerson') : d.salesPerson,
+      leadSourceType: grab('f-leadSourceType'),
+      leadSourceName: grab('f-leadSourceName'),
+      leadSourceOther: d.leadSourceName==='Others' ? grab('f-leadSourceOther') : '',
+      leadSourceVisitPath: d.leadSourceName==='Physical Visit / Scouting' ? (d.leadSourceVisitPath||[]) : [],
+      clientName: grab('f-clientName'),
+      clientPOC: grab('f-clientPOC'),
+      clientPOCDesignation: grab('f-clientPOCDesignation'),
+      clientMobile: clientMobile,
+      clientEmail: emailVal,
+      product: product, productOtherDesc: productOtherDesc||'',
+      projectName: grab('f-projectName'),
+      projectType: projectType,
+      location: grab('f-location'),
+      estimatedValue: parseFloat(grab('f-estimatedValue'))||0,
+      priority: grab('f-priority'),
+      dealStage: newStage,
+      stageChangedDate: tracking.stageChangedDate,
+      stageHistory: tracking.stageHistory,
+      nextAction: newNextAction,
+      actionStartDate: newNextAction ? newActionStartDate : '',
+      actionEndDate: newNextAction ? newActionEndDate : '',
+      nextActionChangedDate: tracking.nextActionChangedDate,
+      actionHistory: tracking.actionHistory,
+      followUpDate: newFollowUpDate,
+      followUpHistory: tracking.followUpHistory,
+      reasonLostWon: grab('f-reasonLostWon'),
+      closedDate: closedDate,
+      updates: d.updates || []
+    };
+    const idx = state.orders.findIndex(o=>o.id===updated.id);
+    if(idx>=0) state.orders[idx]=updated; else state.orders.push(updated);
+    await storageSet(K_ORDERS, state.orders);
+
+    const nowLost = updated.dealStage.startsWith('10.');
+    if(nowLost && !wasLost){
+      const exists = state.lostOrders.find(l=>l.clientName===updated.clientName && l.linkedOrderId===updated.id);
+      if(!exists){
+        state.lostOrders.push({
+          id: uid(), linkedOrderId: updated.id, dateAnalysed: todayStr(),
+          clientName: updated.clientName, projectName: updated.projectName,
+          estimatedValue: updated.estimatedValue, competitorWhoWon:'', rootCause: updated.reasonLostWon||'',
+          improvementsRequired:'', actionOwner:'', targetDate:'', status:'Not started', notes:[]
+        });
+        await storageSet(K_LOST, state.lostOrders);
+      }
     }
+    closeModal();
+  } finally {
+    state.isSavingOrder = false;
   }
-  closeModal();
 }
 async function addOrderUpdate(orderId){
+  if (state.isSavingOrder) return;
   const text = grab('order-update-text').trim();
   if(!text) return;
   const order = state.orders.find(o=>o.id===orderId);
   if(!order) return;
-  order.updates = order.updates || [];
-  order.updates.push({ date: grab('order-update-date') || todayStr(), text, by: state.currentUser.name });
-  await storageSet(K_ORDERS, state.orders);
-  if(state.modal && state.modal.data && state.modal.data.id===orderId) state.modal.data.updates = order.updates;
-  render();
+  state.isSavingOrder = true;
+  try {
+    order.updates = order.updates || [];
+    order.updates.push({ date: grab('order-update-date') || todayStr(), text, by: state.currentUser.name });
+    await storageSet(K_ORDERS, state.orders);
+    if(state.modal && state.modal.data && state.modal.data.id===orderId) state.modal.data.updates = order.updates;
+    render();
+  } finally {
+    state.isSavingOrder = false;
+  }
 }
 async function deleteOrder(id){
   if(!confirm('Delete this order permanently?')) return;
@@ -3747,14 +3782,20 @@ async function clearSampleData(){
   render();
 }
 async function addRep(){
+  if (state.isSavingUser) return;
   const name = grab('t-name').trim(), username = grab('t-username').trim().toLowerCase();
   if(!name||!username){ alert('Fill in all fields.'); return; }
   if(!username.endsWith('@patilgroup.com')){ alert('Only Patil Group email IDs (@patilgroup.com) are allowed.'); return; }
   if(state.users.some(u=>u.username.toLowerCase()===username)){ alert('That email ID is already authorized.'); return; }
-  state.users.push({username: username, role:'rep', name: name, roleTitle:'Sales Rep'});
-  await storageSet(K_USERS, state.users);
-  alert(`User "${name}" (${username}) has been granted access! They can now sign in using Google Sign-In.`);
-  render();
+  state.isSavingUser = true;
+  try {
+    state.users.push({username: username, role:'rep', name: name, roleTitle:'Sales Rep'});
+    await storageSet(K_USERS, state.users);
+    alert(`User "${name}" (${username}) has been granted access! They can now sign in using Google Sign-In.`);
+    render();
+  } finally {
+    state.isSavingUser = false;
+  }
 }
 async function deleteUser(username){
   const target = state.users.find(u => u.username.toLowerCase() === username.toLowerCase());
@@ -3822,8 +3863,8 @@ async function init(){
     console.error('Error loading local state:', e);
   }
 
-  // Force seed if missing full roster dataset (<70 orders)
-  if (!state.orders || state.orders.length < 70) {
+  // Seed initial dataset if missing
+  if (!state.orders || state.orders.length === 0) {
     await runSeed();
   }
 
@@ -3860,31 +3901,47 @@ async function backgroundRemoteSync(isManual = false){
     let updated = false;
 
     if (u && Array.isArray(u) && u.length > 0) {
-      state.users = u;
+      const userMap = new Map();
+      TARGET_ROSTER.forEach(tr => userMap.set(tr.username.toLowerCase(), { ...tr }));
+      u.forEach(user => {
+        if (user && user.username) {
+          const existing = userMap.get(user.username.toLowerCase());
+          userMap.set(user.username.toLowerCase(), existing ? { ...existing, ...user } : user);
+        }
+      });
+      state.users = Array.from(userMap.values());
       ensureAdminUsers();
-      try { localStorage.setItem(K_USERS, JSON.stringify(u)); } catch(e) {}
+      try { localStorage.setItem(K_USERS, JSON.stringify(state.users)); } catch(e) {}
+      if (state.users.length > u.length) {
+        await storageSet(K_USERS, state.users);
+      }
       updated = true;
+    } else if (state.users && state.users.length > 0) {
+      await storageSet(K_USERS, state.users);
     }
 
-    if (o && Array.isArray(o) && o.length >= 70) {
+    if (o && Array.isArray(o) && o.length > 0) {
       state.orders = o;
       try { localStorage.setItem(K_ORDERS, JSON.stringify(o)); } catch(e) {}
       updated = true;
     } else if (state.orders && state.orders.length > 0) {
-      // Cloud storage has outdated/incomplete dataset (<70 orders) — overwrite cloud storage with full roster dataset
       await storageSet(K_ORDERS, state.orders);
     }
 
-    if (c && Array.isArray(c)) {
+    if (c && Array.isArray(c) && c.length > 0) {
       state.coordination = c;
       try { localStorage.setItem(K_COORD, JSON.stringify(c)); } catch(e) {}
       updated = true;
+    } else if (state.coordination && state.coordination.length > 0) {
+      await storageSet(K_COORD, state.coordination);
     }
 
-    if (l && Array.isArray(l)) {
+    if (l && Array.isArray(l) && l.length > 0) {
       state.lostOrders = l;
       try { localStorage.setItem(K_LOST, JSON.stringify(l)); } catch(e) {}
       updated = true;
+    } else if (state.lostOrders && state.lostOrders.length > 0) {
+      await storageSet(K_LOST, state.lostOrders);
     }
 
     if (a && typeof a === 'object') {
