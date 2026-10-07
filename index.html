@@ -1206,10 +1206,6 @@ function renderShell(){
       </div>
     </div>
     <div class="who">
-      <button class="btn" onclick="backgroundRemoteSync(true)" title="Click to synchronize with Google Sheet" style="display:inline-flex;align-items:center;gap:6px;font-size:12px;padding:6px 12px;background:rgba(255,255,255,0.15);border:1px solid rgba(255,255,255,0.3);color:#fff;border-radius:6px;cursor:pointer;white-space:nowrap;">
-        <span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${state.syncStatus==='syncing'?'#f59e0b':(state.syncStatus==='error'?'#ef4444':'#10b981')};"></span>
-        ${state.syncStatus==='syncing'?'Syncing Sheet...':(state.syncStatus==='error'?'Sync Pending (Retry)':'Google Sheet Synced')}
-      </button>
       <button class="btn btn-primary" onclick="openOrderModal()">+ New Lead</button>
       <div class="avatar">${esc(initials)}</div>
       <div><div class="name">${esc(u.name)}</div><div class="role">${esc(u.roleTitle || (u.role==='ceo'?'CEO / Manager':'Sales person'))}</div></div>
