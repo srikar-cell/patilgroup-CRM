@@ -287,6 +287,15 @@ async function storageSet(key, val, retries = 2){
     console.error('localStorage set error', key, e);
   }
 
+  try {
+    await fetch(APPS_SCRIPT_URL + '?action=delete&key=' + encodeURIComponent(key), {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+      redirect: 'follow',
+      body: JSON.stringify({ action: 'delete', key: key })
+    });
+  } catch(e) {}
+
   for (let attempt = 0; attempt <= retries; attempt++) {
     try {
       const payload = JSON.stringify({ action: 'set', key: key, value: val });
@@ -759,7 +768,7 @@ async function runSeed(){
      No fabricated history/values — fields the source sheet didn't have (POC name, mobile, stage
      history, follow-up dates) are simply left blank rather than invented. */
   const orders = [
-    mk({clientName:'Ch.Gowrishankar infra', projectName:'PRIL/RCC/26-27/01', projectType:'Others', product:'Precast - Boundary wall', estimatedValue:0.22, priority:'Warm', dealStage:'7. Customer Follow Up / Negotiation', salesPerson:'raju', dateLogged:'2026-05-12', nextAction:'Follow up going on- awaiting for final call'}),
+mk({clientName:'Ch.Gowrishankar infra', projectName:'PRIL/RCC/26-27/01', projectType:'Others', product:'Precast - Boundary wall', estimatedValue:0.22, priority:'Warm', dealStage:'7. Customer Follow Up / Negotiation', salesPerson:'raju', dateLogged:'2026-05-12', nextAction:'Follow up going on- awaiting for final call'}),
     mk({clientName:'L&T - Hydrabad', projectName:'PRIL/RCC/26-27/02', projectType:'Others', product:'Precast - Boundary wall,RC-Wall,Copping beam', estimatedValue:3.31, priority:'Cold', dealStage:'10. Closed Lost', salesPerson:'raju', dateLogged:'2026-05-14', closedDate:'2026-05-14', reasonLostWon:''}),
     mk({clientName:'Jindal smart build', projectName:'PRIL/RCC/26-27/04', projectType:'Industrial (Factories)', product:'Manufacture of Precast elements', estimatedValue:7.0, priority:'Warm', dealStage:'5. Final Technical + Commercial Check', salesPerson:'raju', dateLogged:'2026-06-15', nextAction:'Final Discussion done, awaiting for client conformation (Originally logged under Sid Sir, now assigned to raju)'}),
     mk({clientName:'M.R. WARERKAR & ASSOCIATES PVT. LTD.', projectName:'PRIL/RCC/26-27/05', projectType:'Others', product:'Precast foundation,plinth beam,wall panel (Production&Erection)', estimatedValue:12.2, priority:'Hot', dealStage:'7. Customer Follow Up / Negotiation', salesPerson:'saurabh', dateLogged:'2025-06-17', nextAction:'Sumbitted offer it\'ll take 1 month to come live, GA drawings still pending (Originally logged under Sid Sir, now assigned to saurabh)'}),
@@ -792,7 +801,44 @@ async function runSeed(){
     mk({clientName:'Shri Satyanarayan Janakwar Sr. DGM Civil RVNL, Varanasi', projectName:'PRIL/RCC/26-27/26', projectType:'Railway', product:'U Drain & Drain cover', estimatedValue:0.927, priority:'Warm', dealStage:'7. Customer Follow Up / Negotiation', salesPerson:'rohit', dateLogged:'2026-08-19', nextAction:'(Originally logged under Vitrang Sir/ Sourab, now assigned to rohit)'}),
     mk({clientName:'Google Data Centre - Mumbai', projectName:'PRIL/RCC/26-27/27', projectType:'Data Centre', product:'Super Structure', estimatedValue:0.0, priority:'Warm', dealStage:'7. Customer Follow Up / Negotiation', salesPerson:'raju', dateLogged:'2026-08-20', nextAction:'Awaiting for client response (Originally logged under Siddharth/Francis, now assigned to raju)'}),
     mk({clientName:'Microsoft Data Centre - Hyd 11/12', projectName:'PRIL/RCC/26-27/28', projectType:'Data Centre', product:'UG structures - Manholes (Electrical, Telphone, Sanitary)', estimatedValue:0.0, priority:'Warm', dealStage:'7. Customer Follow Up / Negotiation', salesPerson:'saurabh', dateLogged:'2026-08-26', nextAction:'Awaiting for client response (Originally logged under Siddharth/Francis, now assigned to saurabh)'}),
-    mk({clientName:'B SMILE Elevated Corridor', projectName:'PRIL/RCC/26-27/29', projectType:'NHAI / SH', product:'UHPFRC Girders', estimatedValue:0.0, priority:'Warm', dealStage:'7. Customer Follow Up / Negotiation', salesPerson:'rohit', dateLogged:'2026-08-24', nextAction:'We are actively engaging with L1 contractors across identified projects. One of the L1 contractors has shared the details for quotation. We are preparing to submit a competitive quotation. SP Singla - 852 Cr. MIRDCL - 532 Cr. RPP - 537 Cr. MVR - 537 Cr. (Originally logged under Siddharth/Vitrang/ Francis, now assigned to rohit)'})
+    mk({clientName:'B SMILE Elevated Corridor', projectName:'PRIL/RCC/26-27/29', projectType:'NHAI / SH', product:'UHPFRC Girders', estimatedValue:0.0, priority:'Warm', dealStage:'7. Customer Follow Up / Negotiation', salesPerson:'rohit', dateLogged:'2026-08-24', nextAction:'We are actively engaging with L1 contractors across identified projects. One of the L1 contractors has shared the details for quotation. We are preparing to submit a competitive quotation. SP Singla - 852 Cr. MIRDCL - 532 Cr. RPP - 537 Cr. MVR - 537 Cr. (Originally logged under Siddharth/Vitrang/ Francis, now assigned to rohit)'}),
+    mk({clientName:'Adaniconnex Hyd 22,23', projectName:'', projectType:'Data Centre', product:'Boundry walls', estimatedValue:2.0, priority:'Warm', dealStage:'7. Customer Follow Up / Negotiation', salesPerson:'raju', nextAction:'Need to submit the quotation by 8th sep'}),
+    mk({clientName:'MU2 data center Navi Mumbai', projectName:'', projectType:'Data Centre', product:'Staircases', estimatedValue:1.0, priority:'Warm', dealStage:'7. Customer Follow Up / Negotiation', salesPerson:'raju', nextAction:'Need to submit the quotation by 6th sep'}),
+    mk({clientName:'Microsoft DC Hyd 12', projectName:'', projectType:'Data Centre', product:'Manholes', estimatedValue:4.0, priority:'Warm', dealStage:'7. Customer Follow Up / Negotiation', salesPerson:'raju', nextAction:'Follow up for drawings'}),
+    mk({clientName:'DMRC', projectName:'', projectType:'Railway', product:'Precast / Metro', estimatedValue:0.0, priority:'Hot', dealStage:'9. Closed Won', salesPerson:'saurabh', nextAction:'Opportunity converted/developed; current project is in installation phase.'}),
+    mk({clientName:'Northern Railway', projectName:'', projectType:'Railway', product:'Electrical Hut', estimatedValue:0.0, priority:'Cold', dealStage:'10. Closed Lost', salesPerson:'saurabh', nextAction:'Closed – client indicated cost is high and required completion within 15 days. Develop a ready-project vendor for such requirements.'}),
+    mk({clientName:'PRIL – Bokaro', projectName:'', projectType:'Industrial (Factories)', product:'Precast', estimatedValue:0.0, priority:'Hot', dealStage:'8. Order Confirmation / PO', salesPerson:'saurabh', nextAction:'PO received; production issue. Advance payment pending.'}),
+    mk({clientName:'AAI / Daman Airport', projectName:'', projectType:'Airport', product:'Precast', estimatedValue:0.0, priority:'Warm', dealStage:'6. Quotation Release to Customer', salesPerson:'saurabh', nextAction:'Quotation to be shared; contractor has quoted and expects to win. Continue coordination with AAI and quote alternate winner if applicable.'}),
+    mk({clientName:'Gaya Railway Station', projectName:'', projectType:'Railway', product:'Precast', estimatedValue:0.0, priority:'Warm', dealStage:'1. Customer Enquiry / Lead', salesPerson:'saurabh', nextAction:'Work depends on Gaya Railway Station.'}),
+    mk({clientName:'Gaya Railway Station', projectName:'', projectType:'Railway', product:'Precast', estimatedValue:0.0, priority:'Warm', dealStage:'1. Customer Enquiry / Lead', salesPerson:'saurabh'}),
+    mk({clientName:'RVNL – Varanasi', projectName:'', projectType:'Railway', product:'U-Drain', estimatedValue:0.0, priority:'Cold', dealStage:'10. Closed Lost', salesPerson:'saurabh', nextAction:'Lost – product mismatch.'}),
+    mk({clientName:'RVNL – Varanasi', projectName:'', projectType:'Railway', product:'U-Drain', estimatedValue:0.0, priority:'Cold', dealStage:'10. Closed Lost', salesPerson:'saurabh', nextAction:'Lost – product mismatch.'}),
+    mk({clientName:'Gaushala & Nagar Panchayat Kaushambi, Uttar Pradesh', projectName:'', projectType:'Public Building', product:'Precast', estimatedValue:0.0, priority:'Cold', dealStage:'10. Closed Lost', salesPerson:'saurabh', nextAction:'Waiting for client reply; subsequently marked lost in source.'}),
+    mk({clientName:'PNC – HORC', projectName:'', projectType:'NHAI / SH', product:'Precast Infrastructure', estimatedValue:0.0, priority:'Cold', dealStage:'10. Closed Lost', salesPerson:'saurabh', nextAction:'Lost – product mismatch.'}),
+    mk({clientName:'Gurgaon Metro', projectName:'', projectType:'Railway', product:'Precast Opportunities', estimatedValue:0.0, priority:'Cold', dealStage:'10. Closed Lost', salesPerson:'saurabh', nextAction:'Rate issue / lost.'}),
+    mk({clientName:'Motihari Railway Station', projectName:'', projectType:'Railway', product:'Precast', estimatedValue:0.0, priority:'Warm', dealStage:'3. Collect Drawings + BOQ + Specification + Schedule', salesPerson:'saurabh', nextAction:'Drawing requirements under discussion.'}),
+    mk({clientName:'Central University, Gaya', projectName:'', projectType:'Public Building', product:'Precast', estimatedValue:0.0, priority:'Warm', dealStage:'1. Customer Enquiry / Lead', salesPerson:'saurabh', nextAction:'Expected project opportunity in approximately 6 months.'}),
+    mk({clientName:'Bihar State Warehousing Corporation', projectName:'', projectType:'Warehousing', product:'Precast', estimatedValue:0.0, priority:'Warm', dealStage:'2. Customer Visit / Project Understanding', salesPerson:'saurabh', nextAction:'Meeting planned with Dr. Gagan, ADM & MD BSWC.'}),
+    mk({clientName:'Bihar State Milk Cooperative Federation Limited', projectName:'', projectType:'Others', product:'U-Drains / Boundary Wall', estimatedValue:0.0, priority:'Warm', dealStage:'2. Customer Visit / Project Understanding', salesPerson:'saurabh', nextAction:'Meeting planned with Mr. Rajwardhan for upcoming dairy projects.'}),
+    mk({clientName:'Mother Dairy', projectName:'', projectType:'Industrial (Factories)', product:'Precast', estimatedValue:0.0, priority:'Warm', dealStage:'1. Customer Enquiry / Lead', salesPerson:'saurabh', nextAction:'Suggested to meet in Delhi.'}),
+    mk({clientName:'Sushila & Radha Hospital Pvt Ltd', projectName:'', projectType:'Public Building', product:'Boundary Wall', estimatedValue:0.0, priority:'Warm', dealStage:'3. Collect Drawings + BOQ + Specification + Schedule', salesPerson:'saurabh', nextAction:'Drawing shared; waiting for response.'}),
+    mk({clientName:'RVNL – Varanasi', projectName:'', projectType:'Railway', product:'U-Drain', estimatedValue:0.0, priority:'Warm', dealStage:'1. Customer Enquiry / Lead', salesPerson:'saurabh', nextAction:'U-Drain opportunity.'}),
+    mk({clientName:'RVNL – Varanasi', projectName:'', projectType:'Railway', product:'U-Drain', estimatedValue:0.0, priority:'Warm', dealStage:'1. Customer Enquiry / Lead', salesPerson:'saurabh', nextAction:'U-Drain opportunity.'}),
+    mk({clientName:'Jabalpur', projectName:'', projectType:'Others', product:'U-Drain', estimatedValue:0.0, priority:'Warm', dealStage:'1. Customer Enquiry / Lead', salesPerson:'saurabh', nextAction:'U-Drain opportunity.'}),
+    mk({clientName:'Satna Railway Station', projectName:'', projectType:'Railway', product:'U-Drain', estimatedValue:0.0, priority:'Warm', dealStage:'1. Customer Enquiry / Lead', salesPerson:'saurabh', nextAction:'U-Drain opportunity.'}),
+    mk({clientName:'Jhansi Railway Division', projectName:'', projectType:'Railway', product:'Precast Bridge Structures', estimatedValue:50.0, priority:'Hot', dealStage:'1. Customer Enquiry / Lead', salesPerson:'saurabh', nextAction:'Estimated business potential.'}),
+    mk({clientName:'Northern Railway – Delhi Division', projectName:'', projectType:'Railway', product:'Retaining Wall', estimatedValue:0.0, priority:'Warm', dealStage:'1. Customer Enquiry / Lead', salesPerson:'saurabh', nextAction:'Technical discussions advanced.'}),
+    mk({clientName:'Northern Railway', projectName:'', projectType:'Railway', product:'Precast Modular Buildings / Railway Cabins', estimatedValue:0.0, priority:'Warm', dealStage:'1. Customer Enquiry / Lead', salesPerson:'saurabh', nextAction:'Alternative construction methodology promoted.'}),
+    mk({clientName:'Ambala Railway Division', projectName:'', projectType:'Railway', product:'Modular Cabins / Utility Structures', estimatedValue:0.0, priority:'Warm', dealStage:'1. Customer Enquiry / Lead', salesPerson:'saurabh', nextAction:'Enquiry generated.'}),
+    mk({clientName:'RVNL – Banaras', projectName:'', projectType:'Railway', product:'U-Drain', estimatedValue:0.0, priority:'Warm', dealStage:'6. Quotation Release to Customer', salesPerson:'saurabh', nextAction:'1800-meter U-Drain; quotation submitted.'}),
+    mk({clientName:'Mughalsarai Railway Station', projectName:'', projectType:'Railway', product:'Box Culverts', estimatedValue:0.0, priority:'Warm', dealStage:'1. Customer Enquiry / Lead', salesPerson:'saurabh', nextAction:'Enquiry generated for 5 box culverts.'}),
+    mk({clientName:'RVNL', projectName:'', projectType:'Railway', product:'Precast / Mobile Precast Factory', estimatedValue:0.0, priority:'Warm', dealStage:'1. Customer Enquiry / Lead', salesPerson:'saurabh', nextAction:'Strategic precast partner positioning; mobile factory discussions.'}),
+    mk({clientName:'Architects / Consultants / Design Professionals', projectName:'', projectType:'Others', product:'Precast / Infrastructure', estimatedValue:0.0, priority:'Warm', dealStage:'1. Customer Enquiry / Lead', salesPerson:'saurabh', nextAction:'Business development network.'}),
+    mk({clientName:'Council of Architecture Chapters', projectName:'', projectType:'Others', product:'Architect & Design Engagement', estimatedValue:0.0, priority:'Warm', dealStage:'1. Customer Enquiry / Lead', salesPerson:'saurabh', nextAction:'Engagement established.'}),
+    mk({clientName:'AAI / CPWD / PWD Punjab / PWD Haryana / PWD Uttar Pradesh / PWD Delhi / PWD Himachal Pradesh', projectName:'', projectType:'Airport', product:'Precast / Infrastructure', estimatedValue:0.0, priority:'Warm', dealStage:'1. Customer Enquiry / Lead', salesPerson:'saurabh', nextAction:'Government agency relationships developed.'}),
+    mk({clientName:'Railway / RVNL', projectName:'', projectType:'Railway', product:'Precast Infrastructure', estimatedValue:0.0, priority:'Warm', dealStage:'1. Customer Enquiry / Lead', salesPerson:'saurabh', nextAction:'Communication channels developed.'}),
+    mk({clientName:'EPC Contractors / Infrastructure Developers', projectName:'', projectType:'Others', product:'Precast Products', estimatedValue:0.0, priority:'Warm', dealStage:'1. Customer Enquiry / Lead', salesPerson:'saurabh', nextAction:'Sustainable enquiry-generation ecosystem.'}),
+    mk({clientName:'Government Agencies / Consultants', projectName:'', projectType:'Others', product:'Precast Infrastructure', estimatedValue:0.0, priority:'Warm', dealStage:'1. Customer Enquiry / Lead', salesPerson:'saurabh', nextAction:'Direct engagement developed.'}),
   ];
   state.orders = orders;
   await storageSet(K_ORDERS, state.orders);
@@ -866,20 +912,28 @@ function dedupeOrders(arr) {
   const seen = new Set();
   const result = [];
   for (const item of arr) {
-    if (!item || typeof item !== 'object') continue;
+    if (!item || typeof item !== 'object' || !item.clientName) continue;
+
     const idKey = item.id ? 'id:' + item.id : null;
+    if (idKey) {
+      if (seen.has(idKey)) continue;
+      seen.add(idKey);
+      result.push(item);
+      continue;
+    }
+
     const contentKey = 'content:' + [
       (item.clientName || '').trim().toLowerCase(),
       (item.projectName || '').trim().toLowerCase(),
       (item.salesPerson || '').trim().toLowerCase(),
+      (item.product || '').trim().toLowerCase(),
+      (item.dealStage || '').trim().toLowerCase(),
+      (item.nextAction || '').trim().toLowerCase(),
       (item.dateLogged || '').trim(),
       item.estimatedValue || 0
     ].join('|');
 
-    if (idKey && seen.has(idKey)) continue;
     if (seen.has(contentKey)) continue;
-
-    if (idKey) seen.add(idKey);
     seen.add(contentKey);
     result.push(item);
   }
