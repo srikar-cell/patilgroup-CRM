@@ -290,29 +290,24 @@ async function storageSet(key, val, retries = 2){
   // Session state belongs strictly to the individual browser/device
   if (key === K_SESSION) return true;
 
+  const payload = JSON.stringify({ action: 'set', key: key, value: val });
+  const fetchUrl = APPS_SCRIPT_URL + '?action=set&key=' + encodeURIComponent(key);
+
   for (let attempt = 0; attempt <= retries; attempt++) {
     try {
-      const payload = JSON.stringify({ action: 'set', key: key, value: val });
-      const fetchUrl = APPS_SCRIPT_URL + '?action=set&key=' + encodeURIComponent(key);
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 20000);
-      const response = await fetch(fetchUrl, {
+      await fetch(fetchUrl, {
         method: 'POST',
+        mode: 'no-cors',
         headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-        redirect: 'follow',
-        signal: controller.signal,
         body: payload
       });
-      clearTimeout(timeoutId);
-      if (response.ok) {
-        state.lastSyncTime = Date.now();
-        state.syncStatus = 'synced';
-        return true;
-      }
+      state.lastSyncTime = Date.now();
+      state.syncStatus = 'synced';
+      return true;
     } catch(e) {
       console.warn(`storageSet attempt ${attempt + 1} failed for ${key}:`, e);
       if (attempt < retries) {
-        await new Promise(r => setTimeout(r, 1000 * (attempt + 1)));
+        await new Promise(r => setTimeout(r, 800 * (attempt + 1)));
       }
     }
   }
@@ -846,10 +841,11 @@ function dedupeOrders(arr) {
 function myOrders(){
   if(!state.currentUser) return [];
   if(state.currentUser.role==='ceo'){
-    if(state.viewingAsRep) return state.orders.filter(o=>matchSalesPerson(o.salesPerson, state.viewingAsRep));
+    if(state.viewingAsRep) return state.orders.filter(o=>o.salesPerson===state.viewingAsRep || matchSalesPerson(o.salesPerson, state.viewingAsRep));
+    if(state.topTab==='team') return state.orders; // Team tab overview — team-wide
     return state.orders; // CEO / Manager sees all deals across the entire pipeline
   }
-  return state.orders.filter(o=>matchSalesPerson(o.salesPerson, state.currentUser.username));
+  return state.orders.filter(o=>o.salesPerson===state.currentUser.username || matchSalesPerson(o.salesPerson, state.currentUser.username));
 }
 function repName(username){
   if(!username) return '—';
@@ -1076,7 +1072,6 @@ function loginHeroBrand(subtitle){
 }
 
 function renderLogin(){
-  const rosterList = (state.users && state.users.length) ? state.users : TARGET_ROSTER;
   return `
   <div class="login-wrap">
     ${loginHeroBg()}
@@ -1090,29 +1085,6 @@ function renderLogin(){
 
         <div style="display:flex;justify-content:center;margin:16px 0;">
           <div id="google-signin-btn"></div>
-        </div>
-
-        <div style="display:flex;align-items:center;margin:22px 0 16px;color:var(--muted);font-size:11px;">
-          <div style="flex:1;height:1px;background:var(--border);"></div>
-          <span style="padding:0 10px;text-transform:uppercase;letter-spacing:1px;font-weight:600;">Or Select Authorized Account</span>
-          <div style="flex:1;height:1px;background:var(--border);"></div>
-        </div>
-
-        <div style="text-align:left;">
-          <label style="display:block;font-size:12px;font-weight:600;margin-bottom:6px;color:var(--text2);">Sign in as authorized team member:</label>
-          <div style="display:flex;gap:8px;">
-            <select id="login-roster-select" style="flex:1;padding:8px 10px;border-radius:6px;border:1px solid var(--border-strong);font-size:13px;background:var(--bg);color:var(--text);">
-              ${rosterList.map(u => `<option value="${esc(u.username)}">${esc(u.name)} (${esc(u.username)})</option>`).join('')}
-            </select>
-            <button class="btn btn-primary" onclick="
-              const sel = document.getElementById('login-roster-select');
-              if (sel) {
-                const u = state.users.find(x => x.username.toLowerCase() === sel.value.toLowerCase()) || TARGET_ROSTER.find(x => x.username.toLowerCase() === sel.value.toLowerCase());
-                if (u) startSession(u);
-              }
-            ">Sign In</button>
-          </div>
-          <div style="font-size:11px;color:var(--muted);margin-top:6px;">Works seamlessly across Vercel, patilgroup.com/crm, and all authorized laptops.</div>
         </div>
       </div>
     </div>
@@ -1136,7 +1108,7 @@ async function saveSession(){
 }
 
 function startSession(user){
-  state.currentUser=user; state.topTab=(user.role==='ceo'?'summary':'mypage'); state.activeTab='dashboard'; state.viewingAsRep=null;
+  state.currentUser=user; state.topTab=(user.role==='ceo'?'summary':'mypage'); state.activeTab='dashboard'; state.dashboardSubTab='leads'; state.viewingAsRep=null;
   saveSession();
   render();
   pingActivity();
@@ -1213,7 +1185,8 @@ function renderShell(){
 function switchTopTab(id){
   state.topTab = id;
   if(id==='team' || id==='mypage' || id==='summary'){ state.viewingAsRep = null; }
-  if(id==='mypage'){ state.activeTab = 'dashboard'; }
+  if(id==='team'){ state.activeTab = 'dashboard'; state.dashboardSubTab = 'leads'; }
+  if(id==='mypage'){ state.activeTab = 'dashboard'; state.dashboardSubTab = 'leads'; }
   saveSession();
   render();
 }
@@ -3910,9 +3883,18 @@ async function backgroundRemoteSync(isManual = false){
     }
 
     if (o && Array.isArray(o)) {
-      const cleaned = dedupeOrders(o);
+      const orderMap = new Map();
+      // 1. Seed with local state to preserve any pending newly created leads
+      (state.orders || []).forEach(item => { if (item && item.id) orderMap.set(item.id, item); });
+      // 2. Authoritative remote Google Sheets data overwrites local cache so admin always sees latest rep updates
+      o.forEach(item => { if (item && item.id) orderMap.set(item.id, item); });
+      const merged = Array.from(orderMap.values());
+      const cleaned = dedupeOrders(merged);
       state.orders = cleaned;
       try { localStorage.setItem(K_ORDERS, JSON.stringify(cleaned)); } catch(e) {}
+      if (cleaned.length > o.length) {
+        storageSet(K_ORDERS, cleaned);
+      }
       updated = true;
     }
 
