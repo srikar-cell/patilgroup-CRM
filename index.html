@@ -3694,9 +3694,19 @@ function renderTeam(){
   </div>`;
 }
 async function clearSampleData(){
-  if(!confirm('This permanently deletes every order, coordination log, and lost-order entry currently in the tracker \u2014 use this once you are ready to start logging real offers. Continue?')) return;
-  state.orders = []; state.coordination = []; state.lostOrders = [];
-  await Promise.all([storageSet(K_ORDERS, state.orders), storageSet(K_COORD, state.coordination), storageSet(K_LOST, state.lostOrders)]);
+  if(!confirm('This permanently deletes every order, coordination log, and lost-order entry currently in the tracker — use this once you are ready to start logging real offers. Continue?')) return;
+  state.orders = []; state.coordination = []; state.lostOrders = []; state.activity = {};
+  localStorage.setItem(K_ORDERS, '[]');
+  localStorage.setItem(K_COORD, '[]');
+  localStorage.setItem(K_LOST, '[]');
+  localStorage.setItem(K_ACTIVITY, '{}');
+  await Promise.all([
+    storageSet(K_ORDERS, state.orders),
+    storageSet(K_COORD, state.coordination),
+    storageSet(K_LOST, state.lostOrders),
+    storageSet(K_ACTIVITY, state.activity)
+  ]);
+  alert('All pipeline data has been completely cleared! You now have a 100% clean slate.');
   render();
 }
 async function addRep(){
@@ -3742,6 +3752,14 @@ async function removeRep(username){
 async function init(){
   state.syncStatus = 'syncing';
   try {
+    const WIPE_KEY = 'crm:clean_slate_wiped_v2026_10';
+    if (!localStorage.getItem(WIPE_KEY)) {
+      localStorage.setItem(K_ORDERS, '[]');
+      localStorage.setItem(K_COORD, '[]');
+      localStorage.setItem(K_LOST, '[]');
+      localStorage.setItem(K_ACTIVITY, '{}');
+      localStorage.setItem(WIPE_KEY, 'true');
+    }
     const u = localStorage.getItem(K_USERS);
     const o = localStorage.getItem(K_ORDERS);
     const c = localStorage.getItem(K_COORD);
@@ -3841,20 +3859,16 @@ async function backgroundRemoteSync(isManual = false){
       updated = true;
     }
 
-    if (c && Array.isArray(c) && c.length > 0) {
+    if (c && Array.isArray(c)) {
       state.coordination = c;
       try { localStorage.setItem(K_COORD, JSON.stringify(c)); } catch(e) {}
       updated = true;
-    } else if (state.coordination && state.coordination.length > 0) {
-      await storageSet(K_COORD, state.coordination);
     }
 
-    if (l && Array.isArray(l) && l.length > 0) {
+    if (l && Array.isArray(l)) {
       state.lostOrders = l;
       try { localStorage.setItem(K_LOST, JSON.stringify(l)); } catch(e) {}
       updated = true;
-    } else if (state.lostOrders && state.lostOrders.length > 0) {
-      await storageSet(K_LOST, state.lostOrders);
     }
 
     if (a && typeof a === 'object') {
