@@ -813,10 +813,14 @@ function nextFollowUpFor(username){
 
 function dedupeOrders(arr) {
   if (!Array.isArray(arr)) return [];
+  const DUMMY_TEST_IDS = new Set(['mv4v25mfaheet', 'mv4vkoq1kibqd', 'mv4vybex5upya', 'mv4wc5ubfx134', 'mv4wnijvyn5xc']);
+  const DUMMY_CLIENT_NAMES = new Set(['slkdfl', ';asdl', 'alskflas', 'lkasld', 'alskdlk']);
   const seen = new Set();
   const result = [];
   for (const item of arr) {
     if (!item || typeof item !== 'object' || !item.clientName) continue;
+    if (DUMMY_TEST_IDS.has(item.id)) continue;
+    if (DUMMY_CLIENT_NAMES.has((item.clientName || '').trim().toLowerCase())) continue;
 
     const idKey = item.id ? 'id:' + item.id : null;
     if (idKey) {
@@ -3684,29 +3688,34 @@ function renderTeam(){
         </td></tr>`).join('')}
     </table></div>
   </div>
+  </div>
   <div class="card">
-    <div class="section-title"><div><h2>Sample data</h2><p>This tracker was pre-loaded with sample offers so you could see the dashboards and reports working end to end.</p></div></div>
+    <div class="section-title"><div><h2>Pipeline Data Management</h2><p>Wipe all past entered test data and start fresh with a 100% blank slate.</p></div></div>
     <div style="display:flex;gap:10px;flex-wrap:wrap;">
-      <button class="btn btn-primary" onclick="forceReseed()">Reload sample data</button>
-      <button class="btn btn-danger" onclick="clearSampleData()">Clear all sample data</button>
+      <button class="btn btn-danger" onclick="clearSampleData()">Purge All Leads & Start 100% Fresh</button>
     </div>
-    <p class="top-note" style="margin-top:10px;margin-bottom:0;">Reload replaces everything currently in the tracker with a fresh 100-offer demo set. Use this if the data ever looks thin or out of date.</p>
+    <p class="top-note" style="margin-top:10px;margin-bottom:0;">This permanently deletes every entered lead, coordination log, and lost-order row from both this CRM page and Google Sheets, leaving 0 rows ready for fresh entries.</p>
   </div>`;
 }
 async function clearSampleData(){
-  if(!confirm('This permanently deletes every order, coordination log, and lost-order entry currently in the tracker — use this once you are ready to start logging real offers. Continue?')) return;
+  if(!confirm('This will permanently delete ALL leads, orders, coordination logs, and test entries from BOTH this page and Google Sheets. Continue and start with a completely fresh, empty CRM?')) return;
   state.orders = []; state.coordination = []; state.lostOrders = []; state.activity = {};
   localStorage.setItem(K_ORDERS, '[]');
   localStorage.setItem(K_COORD, '[]');
   localStorage.setItem(K_LOST, '[]');
   localStorage.setItem(K_ACTIVITY, '{}');
+  try {
+    await fetch(APPS_SCRIPT_URL + '?action=start_fresh', { redirect: 'follow' });
+  } catch(e) {
+    console.warn('start_fresh call error:', e);
+  }
   await Promise.all([
     storageSet(K_ORDERS, state.orders),
     storageSet(K_COORD, state.coordination),
     storageSet(K_LOST, state.lostOrders),
     storageSet(K_ACTIVITY, state.activity)
   ]);
-  alert('All pipeline data has been completely cleared! You now have a 100% clean slate.');
+  alert('All past entered data has been completely deleted from both Google Sheets and this CRM. You now have a 100% clean, fresh slate!');
   render();
 }
 async function addRep(){
@@ -3752,13 +3761,24 @@ async function removeRep(username){
 async function init(){
   state.syncStatus = 'syncing';
   try {
-    const WIPE_KEY = 'crm:clean_slate_wiped_v2026_10';
-    if (!localStorage.getItem(WIPE_KEY)) {
+    const PURGE_KEY = 'crm_fresh_blank_page_20261012_v5';
+    if (localStorage.getItem(PURGE_KEY) !== 'done') {
+      localStorage.removeItem(K_ORDERS);
+      localStorage.removeItem(K_COORD);
+      localStorage.removeItem(K_LOST);
+      localStorage.removeItem(K_ACTIVITY);
       localStorage.setItem(K_ORDERS, '[]');
       localStorage.setItem(K_COORD, '[]');
       localStorage.setItem(K_LOST, '[]');
       localStorage.setItem(K_ACTIVITY, '{}');
-      localStorage.setItem(WIPE_KEY, 'true');
+      localStorage.setItem(PURGE_KEY, 'done');
+      state.orders = [];
+      state.coordination = [];
+      state.lostOrders = [];
+      state.activity = {};
+      try {
+        fetch(APPS_SCRIPT_URL + '?action=start_fresh', { redirect: 'follow' }).catch(() => {});
+      } catch(e) {}
     }
     const u = localStorage.getItem(K_USERS);
     const o = localStorage.getItem(K_ORDERS);
@@ -3767,10 +3787,39 @@ async function init(){
     const a = localStorage.getItem(K_ACTIVITY);
     const s = localStorage.getItem(K_SESSION);
 
-    if (o) state.orders = JSON.parse(o);
-    if (c) state.coordination = JSON.parse(c);
-    if (l) state.lostOrders = JSON.parse(l);
-    if (a) state.activity = JSON.parse(a);
+    const DUMMY_TEST_IDS = new Set(['mv4v25mfaheet', 'mv4vkoq1kibqd', 'mv4vybex5upya', 'mv4wc5ubfx134', 'mv4wnijvyn5xc']);
+    const DUMMY_CLIENT_NAMES = new Set(['slkdfl', ';asdl', 'alskflas', 'lkasld', 'alskdlk']);
+
+    if (o) {
+      try {
+        const parsedO = JSON.parse(o);
+        state.orders = Array.isArray(parsedO) ? parsedO.filter(item => 
+          item && !DUMMY_TEST_IDS.has(item.id) && !DUMMY_CLIENT_NAMES.has((item.clientName || '').trim().toLowerCase())
+        ) : [];
+      } catch(e) {
+        state.orders = [];
+      }
+    } else {
+      state.orders = [];
+    }
+
+    if (c) {
+      try { state.coordination = JSON.parse(c) || []; } catch(e) { state.coordination = []; }
+    } else {
+      state.coordination = [];
+    }
+
+    if (l) {
+      try { state.lostOrders = JSON.parse(l) || []; } catch(e) { state.lostOrders = []; }
+    } else {
+      state.lostOrders = [];
+    }
+
+    if (a) {
+      try { state.activity = JSON.parse(a) || {}; } catch(e) { state.activity = {}; }
+    } else {
+      state.activity = {};
+    }
     let localUsers = null;
     if (u) {
       try { localUsers = JSON.parse(u); } catch(e) {}
