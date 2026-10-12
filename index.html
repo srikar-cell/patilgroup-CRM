@@ -3876,11 +3876,7 @@ async function init(){
   } catch(e) {
     console.error('Error loading local state:', e);
   }
-
-  // Seed initial dataset if missing
-  if (!state.orders || state.orders.length === 0) {
-    await runSeed();
-  }
+  if (!state.orders) { state.orders = []; }
 
   state.loaded = true;
   render();
@@ -3934,17 +3930,11 @@ async function backgroundRemoteSync(isManual = false){
       await storageSet(K_USERS, state.users);
     }
 
-    if (o && Array.isArray(o) && o.length > 0) {
+    if (o && Array.isArray(o)) {
       const cleaned = dedupeOrders(o);
       state.orders = cleaned;
       try { localStorage.setItem(K_ORDERS, JSON.stringify(cleaned)); } catch(e) {}
-      if (cleaned.length < o.length) {
-        await storageSet(K_ORDERS, cleaned);
-      }
       updated = true;
-    } else if (state.orders && state.orders.length > 0) {
-      state.orders = dedupeOrders(state.orders);
-      await storageSet(K_ORDERS, state.orders);
     }
 
     if (c && Array.isArray(c) && c.length > 0) {
