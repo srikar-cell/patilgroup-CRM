@@ -287,14 +287,8 @@ async function storageSet(key, val, retries = 2){
     console.error('localStorage set error', key, e);
   }
 
-  try {
-    await fetch(APPS_SCRIPT_URL + '?action=delete&key=' + encodeURIComponent(key), {
-      method: 'POST',
-      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-      redirect: 'follow',
-      body: JSON.stringify({ action: 'delete', key: key })
-    });
-  } catch(e) {}
+  // Session state belongs strictly to the individual browser/device
+  if (key === K_SESSION) return true;
 
   for (let attempt = 0; attempt <= retries; attempt++) {
     try {
@@ -1082,6 +1076,7 @@ function loginHeroBrand(subtitle){
 }
 
 function renderLogin(){
+  const rosterList = (state.users && state.users.length) ? state.users : TARGET_ROSTER;
   return `
   <div class="login-wrap">
     ${loginHeroBg()}
@@ -1096,6 +1091,29 @@ function renderLogin(){
         <div style="display:flex;justify-content:center;margin:16px 0;">
           <div id="google-signin-btn"></div>
         </div>
+
+        <div style="display:flex;align-items:center;margin:22px 0 16px;color:var(--muted);font-size:11px;">
+          <div style="flex:1;height:1px;background:var(--border);"></div>
+          <span style="padding:0 10px;text-transform:uppercase;letter-spacing:1px;font-weight:600;">Or Select Authorized Account</span>
+          <div style="flex:1;height:1px;background:var(--border);"></div>
+        </div>
+
+        <div style="text-align:left;">
+          <label style="display:block;font-size:12px;font-weight:600;margin-bottom:6px;color:var(--text2);">Sign in as authorized team member:</label>
+          <div style="display:flex;gap:8px;">
+            <select id="login-roster-select" style="flex:1;padding:8px 10px;border-radius:6px;border:1px solid var(--border-strong);font-size:13px;background:var(--bg);color:var(--text);">
+              ${rosterList.map(u => `<option value="${esc(u.username)}">${esc(u.name)} (${esc(u.username)})</option>`).join('')}
+            </select>
+            <button class="btn btn-primary" onclick="
+              const sel = document.getElementById('login-roster-select');
+              if (sel) {
+                const u = state.users.find(x => x.username.toLowerCase() === sel.value.toLowerCase()) || TARGET_ROSTER.find(x => x.username.toLowerCase() === sel.value.toLowerCase());
+                if (u) startSession(u);
+              }
+            ">Sign In</button>
+          </div>
+          <div style="font-size:11px;color:var(--muted);margin-top:6px;">Works seamlessly across Vercel, patilgroup.com/crm, and all authorized laptops.</div>
+        </div>
       </div>
     </div>
   </div>`;
@@ -1103,26 +1121,29 @@ function renderLogin(){
 
 async function saveSession(){
   if(state.currentUser){
-    await storageSet(K_SESSION, {
-      username: state.currentUser.username,
-      topTab: state.topTab,
-      activeTab: state.activeTab,
-      viewingAsRep: state.viewingAsRep,
-      dashboardSubTab: state.dashboardSubTab
-    });
+    try {
+      localStorage.setItem(K_SESSION, JSON.stringify({
+        username: state.currentUser.username,
+        topTab: state.topTab,
+        activeTab: state.activeTab,
+        viewingAsRep: state.viewingAsRep,
+        dashboardSubTab: state.dashboardSubTab
+      }));
+    } catch(e){}
   } else {
-    await storageSet(K_SESSION, null);
+    try { localStorage.removeItem(K_SESSION); } catch(e){}
   }
 }
 
 function startSession(user){
   state.currentUser=user; state.topTab=(user.role==='ceo'?'summary':'mypage'); state.activeTab='dashboard'; state.viewingAsRep=null;
-  try { localStorage.setItem(K_SESSION, JSON.stringify({ username: user.username, topTab: state.topTab, activeTab: state.activeTab, viewingAsRep: null, dashboardSubTab: state.dashboardSubTab })); } catch(e){}
-  render();
   saveSession();
+  render();
   pingActivity();
   if(window.__pingTimer) clearInterval(window.__pingTimer);
   window.__pingTimer = setInterval(pingActivity, 5*60*1000);
+  // Immediately pull live centralized data from Google Sheet upon signing in
+  backgroundRemoteSync(false);
 }
 
 function doLogout(){
@@ -1131,9 +1152,8 @@ function doLogout(){
   state.topTab='mypage';
   state.loginError='';
   if(window.__pingTimer) clearInterval(window.__pingTimer);
-  try { localStorage.removeItem(K_SESSION); } catch(e){}
-  render();
   saveSession();
+  render();
 }
 
 /* ================= SHELL ================= */
@@ -1169,6 +1189,10 @@ function renderShell(){
     </div>
     <div class="who">
       <button class="btn btn-primary" onclick="openOrderModal()">+ New Lead</button>
+      <button class="btn" onclick="backgroundRemoteSync(true)" title="Fetch and sync live data from Google Sheets" style="display:inline-flex;align-items:center;gap:6px;font-size:12px;padding:6px 11px;">
+        <span style="font-size:13px;">${state.syncStatus==='syncing'?'⏳':'🔄'}</span>
+        <span>${state.syncStatus==='syncing'?'Syncing...':'Sync Cloud'}</span>
+      </button>
       <div class="avatar">${esc(initials)}</div>
       <div><div class="name">${esc(u.name)}</div><div class="role">${esc(u.roleTitle || (u.role==='ceo'?'CEO / Manager':'Sales person'))}</div></div>
       <button class="btn" onclick="doLogout()">Sign out</button>
@@ -3761,25 +3785,6 @@ async function removeRep(username){
 async function init(){
   state.syncStatus = 'syncing';
   try {
-    const PURGE_KEY = 'crm_fresh_blank_page_20261012_v5';
-    if (localStorage.getItem(PURGE_KEY) !== 'done') {
-      localStorage.removeItem(K_ORDERS);
-      localStorage.removeItem(K_COORD);
-      localStorage.removeItem(K_LOST);
-      localStorage.removeItem(K_ACTIVITY);
-      localStorage.setItem(K_ORDERS, '[]');
-      localStorage.setItem(K_COORD, '[]');
-      localStorage.setItem(K_LOST, '[]');
-      localStorage.setItem(K_ACTIVITY, '{}');
-      localStorage.setItem(PURGE_KEY, 'done');
-      state.orders = [];
-      state.coordination = [];
-      state.lostOrders = [];
-      state.activity = {};
-      try {
-        fetch(APPS_SCRIPT_URL + '?action=start_fresh', { redirect: 'follow' }).catch(() => {});
-      } catch(e) {}
-    }
     const u = localStorage.getItem(K_USERS);
     const o = localStorage.getItem(K_ORDERS);
     const c = localStorage.getItem(K_COORD);
@@ -3852,8 +3857,14 @@ async function init(){
   state.loaded = true;
   render();
 
-  // Background Remote Sync
+  // Background Remote Sync to fetch centralized Google Sheet data
   await backgroundRemoteSync();
+
+  // Multi-laptop continuous synchronization: poll Google Sheet every 25 seconds
+  if (window.__cloudSyncTimer) clearInterval(window.__cloudSyncTimer);
+  window.__cloudSyncTimer = setInterval(() => {
+    backgroundRemoteSync(false);
+  }, 25000);
 }
 
 async function backgroundRemoteSync(isManual = false){
@@ -3875,9 +3886,6 @@ async function backgroundRemoteSync(isManual = false){
     await new Promise(r => setTimeout(r, 100));
 
     const a = await storageGet(K_ACTIVITY);
-    await new Promise(r => setTimeout(r, 100));
-
-    const s = await storageGet(K_SESSION);
 
     let updated = false;
 
@@ -3925,21 +3933,10 @@ async function backgroundRemoteSync(isManual = false){
       try { localStorage.setItem(K_ACTIVITY, JSON.stringify(a)); } catch(e) {}
     }
 
-    if (s && s.username && !state.currentUser) {
-      const activeUser = state.users.find(x => matchSalesPerson(x.username, s.username));
-      if (activeUser) {
-        state.currentUser = activeUser;
-        if (s.topTab) state.topTab = s.topTab;
-        if (s.activeTab) state.activeTab = s.activeTab;
-        if (s.viewingAsRep !== undefined) state.viewingAsRep = s.viewingAsRep;
-        if (s.dashboardSubTab) state.dashboardSubTab = s.dashboardSubTab;
-      }
-    }
-
     state.syncStatus = 'synced';
     state.lastSyncTime = Date.now();
     render();
-    if (isManual) alert('Cloud Sync Complete! All data is synchronized.');
+    if (isManual) alert('Cloud Sync Complete! All pipeline data is updated from Google Sheets.');
   } catch(e) {
     console.error('backgroundRemoteSync error:', e);
     state.syncStatus = 'error';
