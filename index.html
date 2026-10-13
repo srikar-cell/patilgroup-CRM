@@ -280,7 +280,7 @@ async function storageGet(key, retries = 2){
   return localData;
 }
 
-async function storageSet(key, val, retries = 2){
+async function storageSet(key, val, retries = 2, isReplace = false){
   try {
     localStorage.setItem(key, JSON.stringify(val));
   } catch(e) {
@@ -290,8 +290,8 @@ async function storageSet(key, val, retries = 2){
   // Session state belongs strictly to the individual browser/device
   if (key === K_SESSION) return true;
 
-  const payload = JSON.stringify({ action: 'set', key: key, value: val });
-  const fetchUrl = APPS_SCRIPT_URL + '?action=set&key=' + encodeURIComponent(key);
+  const payload = JSON.stringify({ action: 'set', key: key, value: val, mode: isReplace ? 'replace' : 'merge' });
+  const fetchUrl = APPS_SCRIPT_URL + '?action=set&key=' + encodeURIComponent(key) + (isReplace ? '&mode=replace' : '');
 
   for (let attempt = 0; attempt <= retries; attempt++) {
     try {
@@ -315,6 +315,24 @@ async function storageSet(key, val, retries = 2){
   state.syncStatus = 'error';
   state.syncErrorMsg = 'Cloud sync pending...';
   return false;
+}
+
+async function saveLeadToCloud(order) {
+  state.syncStatus = 'syncing';
+  try {
+    const payload = JSON.stringify({ action: 'save_order', order: order });
+    await fetch(APPS_SCRIPT_URL + '?action=save_order', {
+      method: 'POST',
+      mode: 'no-cors',
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+      body: payload
+    });
+  } catch(e) {
+    console.warn('save_order atomic POST error:', e);
+  }
+  await storageSet(K_ORDERS, state.orders);
+  state.lastSyncTime = Date.now();
+  state.syncStatus = 'synced';
 }
 
 function exportData(){
@@ -2946,7 +2964,7 @@ async function saveOrder(){
       updates: d.updates || []
     };
     const idx = state.orders.findIndex(o=>o.id===updated.id);
-    if(idx>=0) state.orders[idx]=updated; else state.orders.push(updated);
+    if(idx>=0) state.orders[idx]=updated; else state.orders.unshift(updated);
     try { localStorage.setItem(K_ORDERS, JSON.stringify(state.orders)); } catch(e) {}
 
     const nowLost = updated.dealStage.startsWith('10.');
@@ -2963,7 +2981,8 @@ async function saveOrder(){
       }
     }
     closeModal();
-    await storageSet(K_ORDERS, state.orders);
+    render();
+    await saveLeadToCloud(updated);
   } finally {
     state.isSavingOrder = false;
   }
@@ -2978,7 +2997,7 @@ async function addOrderUpdate(orderId){
   try {
     order.updates = order.updates || [];
     order.updates.push({ date: grab('order-update-date') || todayStr(), text, by: state.currentUser.name });
-    await storageSet(K_ORDERS, state.orders);
+    await saveLeadToCloud(order);
     if(state.modal && state.modal.data && state.modal.data.id===orderId) state.modal.data.updates = order.updates;
     render();
   } finally {
@@ -2988,8 +3007,19 @@ async function addOrderUpdate(orderId){
 async function deleteOrder(id){
   if(!confirm('Delete this order permanently?')) return;
   state.orders = state.orders.filter(o=>o.id!==id);
-  await storageSet(K_ORDERS, state.orders);
+  try { localStorage.setItem(K_ORDERS, JSON.stringify(state.orders)); } catch(e) {}
   closeModal();
+  render();
+
+  try {
+    await fetch(APPS_SCRIPT_URL + '?action=delete_order&id=' + encodeURIComponent(id), {
+      method: 'POST',
+      mode: 'no-cors',
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+      body: JSON.stringify({ action: 'delete_order', id: id })
+    });
+  } catch(e) {}
+  await storageSet(K_ORDERS, state.orders, 2, true);
 }
 
 /* ================= COORDINATION ================= */
@@ -3906,15 +3936,25 @@ async function backgroundRemoteSync(isManual = false){
 
     if (o && Array.isArray(o)) {
       const orderMap = new Map();
-      // 1. Seed with local state to preserve any pending newly created leads on this laptop
-      (state.orders || []).forEach(item => { if (item && item.id) orderMap.set(item.id, item); });
-      // 2. Authoritative remote Google Sheets data overwrites local cache so admin always sees latest rep updates
+      // 1. Authoritative remote Google Sheets data
       o.forEach(item => { if (item && item.id) orderMap.set(item.id, item); });
+
+      // 2. Preserve any local leads that are pending or not yet in Google Sheets (e.g. from other laptop)
+      let hasMissingLocal = false;
+      (state.orders || []).forEach(item => {
+        if (item && item.id && !orderMap.has(item.id)) {
+          orderMap.set(item.id, item);
+          hasMissingLocal = true;
+        }
+      });
+
       const merged = Array.from(orderMap.values());
       const cleaned = dedupeOrders(merged);
       state.orders = cleaned;
       try { localStorage.setItem(K_ORDERS, JSON.stringify(cleaned)); } catch(e) {}
-      if (cleaned.length > o.length) {
+
+      // 3. If there were local leads that were missing from Google Sheets, immediately upload them!
+      if (hasMissingLocal) {
         storageSet(K_ORDERS, cleaned);
       }
       updated = true;
