@@ -144,6 +144,7 @@ function doPost(e) {
         currentOrders.unshift(singleOrder); // Prepend so latest lead appears first
       }
 
+      setStoredValue(storageSheet, 'crm:is_wiped', false);
       setStoredValue(storageSheet, 'crm:orders', currentOrders);
       updateOrdersSheet(ss, currentOrders);
 
@@ -194,24 +195,30 @@ function doPost(e) {
     // 5. SMART-MERGE FOR ORDERS (Prevents multi-laptop race conditions)
     var finalVal = value;
     if (key === 'crm:orders' && Array.isArray(value)) {
-      var isReplace = (postData.mode === 'replace' || (e && e.parameter && e.parameter.mode === 'replace'));
-      if (!isReplace) {
-        var existingInSheet = getStoredValue(storageSheet, 'crm:orders') || [];
-        if (Array.isArray(existingInSheet) && existingInSheet.length > 0) {
-          var orderMap = {};
-          // Keep all existing orders from sheet
-          for (var ei = 0; ei < existingInSheet.length; ei++) {
-            if (existingInSheet[ei] && existingInSheet[ei].id) {
-              orderMap[existingInSheet[ei].id] = existingInSheet[ei];
+      var isWiped = getStoredValue(storageSheet, 'crm:is_wiped');
+      if (isWiped === true) {
+        // Database was wiped: prevent client background loops from resurrecting old orders
+        finalVal = [];
+      } else {
+        var isReplace = (postData.mode === 'replace' || (e && e.parameter && e.parameter.mode === 'replace'));
+        if (!isReplace) {
+          var existingInSheet = getStoredValue(storageSheet, 'crm:orders') || [];
+          if (Array.isArray(existingInSheet) && existingInSheet.length > 0) {
+            var orderMap = {};
+            // Keep all existing orders from sheet
+            for (var ei = 0; ei < existingInSheet.length; ei++) {
+              if (existingInSheet[ei] && existingInSheet[ei].id) {
+                orderMap[existingInSheet[ei].id] = existingInSheet[ei];
+              }
             }
-          }
-          // Merge/update with incoming orders from this client
-          for (var vi = 0; vi < value.length; vi++) {
-            if (value[vi] && value[vi].id) {
-              orderMap[value[vi].id] = value[vi];
+            // Merge/update with incoming orders from this client
+            for (var vi = 0; vi < value.length; vi++) {
+              if (value[vi] && value[vi].id) {
+                orderMap[value[vi].id] = value[vi];
+              }
             }
+            finalVal = Object.keys(orderMap).map(function(k) { return orderMap[k]; });
           }
-          finalVal = Object.keys(orderMap).map(function(k) { return orderMap[k]; });
         }
       }
     }
@@ -262,6 +269,7 @@ function startFreshWipeAllData() {
   var wipeEpoch = new Date().getTime();
 
   setStoredValue(storageSheet, 'crm:wipe_epoch', wipeEpoch);
+  setStoredValue(storageSheet, 'crm:is_wiped', true);
   setStoredValue(storageSheet, 'crm:orders', []);
   setStoredValue(storageSheet, 'crm:lostorders', []);
   setStoredValue(storageSheet, 'crm:coordination', []);
