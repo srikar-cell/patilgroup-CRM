@@ -3,6 +3,9 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+<meta http-equiv="Pragma" content="no-cache">
+<meta http-equiv="Expires" content="0">
 <title>Sales Pipeline CRM</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -243,7 +246,7 @@ input[type="number"]{ -moz-appearance:textfield; appearance:textfield; }
 const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbwUq60-IGxKcP3bLCxgugC6JF_QYRHLBgmCRURlZ6Sua_Xf1vQhQc5MPFcshqSmUA53dQ/exec';
 const K_USERS='crm:users', K_ORDERS='crm:orders', K_COORD='crm:coordination', K_LOST='crm:lostorders', K_ACTIVITY='crm:activity', K_SESSION='crm:session';
 
-async function storageGet(key, retries = 2){
+async function storageGet(key, retries = 2, fallbackToLocal = true){
   let localData = null;
   try {
     const raw = localStorage.getItem(key);
@@ -253,7 +256,7 @@ async function storageGet(key, retries = 2){
   for (let attempt = 0; attempt <= retries; attempt++) {
     try {
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 15000);
+      const timeoutId = setTimeout(() => controller.abort(), 12000);
       const fetchUrl = APPS_SCRIPT_URL + '?action=get&key=' + encodeURIComponent(key);
       const response = await fetch(fetchUrl, { redirect: 'follow', signal: controller.signal });
       clearTimeout(timeoutId);
@@ -272,12 +275,12 @@ async function storageGet(key, retries = 2){
     } catch(e) {
       console.warn(`storageGet attempt ${attempt + 1} failed for ${key}:`, e);
       if (attempt < retries) {
-        await new Promise(r => setTimeout(r, 800 * (attempt + 1)));
+        await new Promise(r => setTimeout(r, 600 * (attempt + 1)));
       }
     }
   }
 
-  return localData;
+  return fallbackToLocal ? localData : null;
 }
 
 async function storageSet(key, val, retries = 2, isReplace = false){
@@ -3896,20 +3899,19 @@ async function backgroundRemoteSync(isManual = false){
       // get_all not supported or timed out; fallback to parallel fetch
     }
 
-    // 2. Parallel fallback: fetch all keys simultaneously with Promise.allSettled
+    // 2. Parallel fallback: fetch orders first with priority, then other tabs
     if (!gotBatch) {
-      const results = await Promise.allSettled([
-        storageGet(K_USERS),
-        storageGet(K_ORDERS),
-        storageGet(K_COORD),
-        storageGet(K_LOST),
-        storageGet(K_ACTIVITY)
+      o = await storageGet(K_ORDERS, 2, false);
+      const otherResults = await Promise.allSettled([
+        storageGet(K_USERS, 1, false),
+        storageGet(K_COORD, 1, false),
+        storageGet(K_LOST, 1, false),
+        storageGet(K_ACTIVITY, 1, false)
       ]);
-      u = results[0].status === 'fulfilled' ? results[0].value : null;
-      o = results[1].status === 'fulfilled' ? results[1].value : null;
-      c = results[2].status === 'fulfilled' ? results[2].value : null;
-      l = results[3].status === 'fulfilled' ? results[3].value : null;
-      a = results[4].status === 'fulfilled' ? results[4].value : null;
+      u = otherResults[0].status === 'fulfilled' ? otherResults[0].value : null;
+      c = otherResults[1].status === 'fulfilled' ? otherResults[1].value : null;
+      l = otherResults[2].status === 'fulfilled' ? otherResults[2].value : null;
+      a = otherResults[3].status === 'fulfilled' ? otherResults[3].value : null;
     }
 
     let updated = false;
@@ -3955,7 +3957,7 @@ async function backgroundRemoteSync(isManual = false){
 
       // 3. If there were local leads that were missing from Google Sheets, immediately upload them!
       if (hasMissingLocal) {
-        storageSet(K_ORDERS, cleaned);
+        await storageSet(K_ORDERS, cleaned);
       }
       updated = true;
     }
