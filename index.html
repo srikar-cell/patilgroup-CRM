@@ -1086,82 +1086,100 @@ function parseJwt(token) {
 }
 
 async function handleGoogleCredentialResponse(response) {
-  if (!response || !response.credential) {
-    state.loginError = 'Google Sign-In failed. Please try again.';
-    render();
-    return;
-  }
-
-  const payload = parseJwt(response.credential);
-  if (!payload || !payload.email) {
-    state.loginError = 'Could not decode Google account details.';
-    render();
-    return;
-  }
-
-  const email = payload.email.trim().toLowerCase();
-  const googleName = payload.name || email.split('@')[0];
-
-  // 1. STRICT DOMAIN RESTRICTION: Only @patilgroup.com allowed
-  if (!email.endsWith('@patilgroup.com')) {
-    state.loginError = `Access Denied: (${email}) is a personal or unauthorized email. Only official @patilgroup.com Google accounts are permitted.`;
-    render();
-    return;
-  }
-
-  ensureAdminUsers();
-
-  // 2. CHECK IF ADMIN (Specific Admin Emails Only)
-  const isAdmin = ADMIN_EMAILS.includes(email);
-
-  let existingUser = state.users.find(u => u.username.toLowerCase() === email);
-
-  if (isAdmin) {
-    let adminUser = existingUser;
-    if (!adminUser) {
-      const rosterMatch = TARGET_ROSTER.find(t => t.username.toLowerCase() === email);
-      adminUser = {
-        username: email,
-        role: 'ceo',
-        name: rosterMatch ? rosterMatch.name : googleName,
-        roleTitle: rosterMatch ? rosterMatch.roleTitle : 'CEO / Manager'
-      };
-      state.users.push(adminUser);
-      await storageSet(K_USERS, state.users);
-    } else {
-      adminUser.role = 'ceo';
-      if (!adminUser.name) adminUser.name = googleName;
+  try {
+    if (!response || !response.credential) {
+      state.loginError = 'Google Sign-In failed or was cancelled. Please try again.';
+      render();
+      return;
     }
-    state.loginError = '';
-    startSession(adminUser);
-    return;
-  }
 
-  // 3. CHECK IF AUTHORIZED SALES REP USER
-  if (existingUser && existingUser.role === 'rep') {
-    state.loginError = '';
-    startSession(existingUser);
-    return;
-  }
+    const payload = parseJwt(response.credential);
+    if (!payload || !payload.email) {
+      state.loginError = 'Could not decode Google account details.';
+      render();
+      return;
+    }
 
-  const rosterMatch = TARGET_ROSTER.find(t => t.username.toLowerCase() === email && t.role === 'rep');
-  if (rosterMatch) {
+    const email = payload.email.trim().toLowerCase();
+    const googleName = payload.name || payload.given_name || email.split('@')[0];
+
+    // 1. DOMAIN RESTRICTION: Allow official @patilgroup.com and authorized developer test account
+    const isPatilDomain = email.endsWith('@patilgroup.com');
+    const isDevAdmin = email === 'websitelogin.pril@gmail.com';
+
+    if (!isPatilDomain && !isDevAdmin) {
+      state.loginError = `Access Denied: (${email}) is not an authorized account. Only official @patilgroup.com Google accounts are permitted.`;
+      render();
+      return;
+    }
+
+    ensureAdminUsers();
+
+    // 2. CHECK IF ADMIN
+    const isAdmin = ADMIN_EMAILS.includes(email) || isDevAdmin;
+
+    let existingUser = (state.users || []).find(u => u && u.username && u.username.toLowerCase() === email);
+
+    if (isAdmin) {
+      let adminUser = existingUser;
+      if (!adminUser) {
+        const rosterMatch = TARGET_ROSTER.find(t => t.username.toLowerCase() === email);
+        adminUser = {
+          username: email,
+          role: 'ceo',
+          name: (rosterMatch && rosterMatch.name) ? rosterMatch.name : (googleName || 'Admin'),
+          roleTitle: (rosterMatch && rosterMatch.roleTitle) ? rosterMatch.roleTitle : 'CEO / Manager'
+        };
+        state.users.push(adminUser);
+        storageSet(K_USERS, state.users);
+      } else {
+        adminUser.role = 'ceo';
+        if (!adminUser.name) adminUser.name = googleName;
+      }
+      state.loginError = '';
+      startSession(adminUser);
+      return;
+    }
+
+    // 3. CHECK IF AUTHORIZED SALES REP USER (existing or on roster)
+    if (existingUser && existingUser.role === 'rep') {
+      if (!existingUser.name) existingUser.name = googleName;
+      state.loginError = '';
+      startSession(existingUser);
+      return;
+    }
+
+    const rosterMatch = TARGET_ROSTER.find(t => t.username.toLowerCase() === email && t.role === 'rep');
+    if (rosterMatch) {
+      let repUser = {
+        username: email,
+        role: 'rep',
+        name: rosterMatch.name || googleName,
+        roleTitle: rosterMatch.roleTitle || 'Sales Rep'
+      };
+      state.users.push(repUser);
+      storageSet(K_USERS, state.users);
+      state.loginError = '';
+      startSession(repUser);
+      return;
+    }
+
+    // 4. ANY OTHER @patilgroup.com EMPLOYEE: Automatically grant access as Sales Rep!
     let repUser = {
       username: email,
       role: 'rep',
-      name: rosterMatch.name || googleName,
-      roleTitle: rosterMatch.roleTitle || 'Sales Rep'
+      name: googleName || email.split('@')[0],
+      roleTitle: 'Sales Rep'
     };
     state.users.push(repUser);
-    await storageSet(K_USERS, state.users);
+    storageSet(K_USERS, state.users);
     state.loginError = '';
     startSession(repUser);
-    return;
+  } catch(err) {
+    console.error('handleGoogleCredentialResponse error:', err);
+    state.loginError = 'Login error: ' + (err.message || err);
+    render();
   }
-
-  // 4. DENY ACCESS IF NOT AUTHORIZED BY ADMIN YET
-  state.loginError = `Access Denied: Your email (${email}) has not been authorized by an administrator yet. Please ask an Admin to grant you access.`;
-  render();
 }
 
 function loginHeroBg(){
@@ -1225,8 +1243,8 @@ async function startSession(user){
   pingActivity();
   if(window.__pingTimer) clearInterval(window.__pingTimer);
   window.__pingTimer = setInterval(pingActivity, 5*60*1000);
-  // Immediately pull live centralized data from Google Sheet upon signing in
-  await backgroundRemoteSync(false);
+  // Immediately pull live centralized data in the background
+  backgroundRemoteSync(false);
 }
 
 function doLogout(){
@@ -1241,9 +1259,10 @@ function doLogout(){
 
 /* ================= SHELL ================= */
 function renderShell(){
-  const u = state.currentUser;
+  const u = state.currentUser || {};
   const isCeo = u.role==='ceo';
-  const initials = u.name.split(' ').map(x=>x[0]).slice(0,2).join('').toUpperCase();
+  const userName = u.name || u.username || 'User';
+  const initials = userName.split(' ').filter(Boolean).map(x=>x[0]).slice(0,2).join('').toUpperCase() || 'U';
 
   const topTabs = [];
   if(isCeo) topTabs.push(['summary','Summary Page'], ['team','Team'], ['teamlogins','Team logins']);
@@ -1274,7 +1293,7 @@ function renderShell(){
       <a href="https://docs.google.com/spreadsheets/d/15FpOiyRhCW-Ln4L0w2Jq5NILclh9HW16uqqt6m5-uIM/edit" target="_blank" rel="noopener" class="cloud-sheet-badge" title="Live Google Sheet database — click to view all rows"><span class="cloud-sheet-dot"></span>Google Sheet Live</a>
       <button class="btn btn-primary" onclick="openOrderModal()">+ New Lead</button>
       <div class="avatar">${esc(initials)}</div>
-      <div><div class="name">${esc(u.name)}</div><div class="role">${esc(u.roleTitle || (u.role==='ceo'?'CEO / Manager':'Sales person'))}</div></div>
+      <div><div class="name">${esc(userName)}</div><div class="role">${esc(u.roleTitle || (u.role==='ceo'?'CEO / Manager':'Sales person'))}</div></div>
       <button class="btn" onclick="doLogout()">Sign out</button>
     </div>
   </div>
