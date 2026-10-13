@@ -506,6 +506,9 @@ function updateOrdersSheet(ss, orders) {
     "Current Deal Stage",
     "Stage Last Changed Date",
     "Sales Rep",
+    "Created By (Email)",
+    "Last Updated By (Email)",
+    "Last Updated Timestamp",
     "Next Follow-up Action",
     "Type of Action (Dependency)",
     "Action Planned Start Date",
@@ -601,6 +604,9 @@ function updateOrdersSheet(ss, orders) {
       o.dealStage || '',
       o.stageChangedDate || '',
       o.salesPerson || '',
+      o.createdBy || '',
+      o.lastUpdatedBy || '',
+      o.lastUpdatedAt || '',
       o.nextAction || '',
       actionType,
       o.actionStartDate || '',
@@ -639,6 +645,8 @@ function updateCoordinationSheet(ss, logs) {
     "Linked Offer ID",
     "Client Name",
     "Project Name",
+    "Sales Rep / Assigned Email",
+    "Created By (Email)",
     "Category / Topic",
     "Technical Solution / Activity",
     "Plant Fulfillment Status",
@@ -656,6 +664,8 @@ function updateCoordinationSheet(ss, logs) {
       l.orderId || '',
       l.clientName || '',
       l.projectName || '',
+      l.salesPerson || '',
+      l.createdBy || '',
       l.category || '',
       l.activity || l.details || '',
       l.fulfillment || '',
@@ -665,7 +675,7 @@ function updateCoordinationSheet(ss, logs) {
     ]);
   }
 
-  ensureSheetDimensions(sheet, Math.max(20, rows.length + 5), Math.max(15, headers.length));
+  ensureSheetDimensions(sheet, Math.max(20, rows.length + 5), Math.max(16, headers.length));
   sheet.getRange(1, 1, rows.length, headers.length).setValues(rows);
   formatHeaderRow(sheet, headers.length);
   autoFormatTable(sheet, rows.length, headers.length);
@@ -684,6 +694,9 @@ function updateLostOrdersSheet(ss, lost) {
     "Client Name",
     "Project Name",
     "Estimated Value (INR CR)",
+    "Sales Rep / Assigned Email",
+    "Created By (Email)",
+    "Last Updated By (Email)",
     "Competitor Who Won",
     "Implementation Status",
     "Primary Root Cause",
@@ -713,6 +726,9 @@ function updateLostOrdersSheet(ss, lost) {
       l.clientName || '',
       l.projectName || '',
       l.estimatedValue !== undefined ? l.estimatedValue : '',
+      l.salesPerson || '',
+      l.createdBy || '',
+      l.lastUpdatedBy || '',
       l.competitorWhoWon || '',
       l.status || 'Not started',
       l.rootCause || '',

@@ -480,29 +480,70 @@ let state = {
   summaryProductSort: 'value-desc'
 };
 
+const CANONICAL_USER_MAP = {
+  // 4 Admins
+  'siddharth@patilgroup.com': 'siddharth@patilgroup.com',
+  'siddharth': 'siddharth@patilgroup.com',
+  'sid': 'siddharth@patilgroup.com',
+  'siddharth sharma': 'siddharth@patilgroup.com',
+
+  'vitrang@patilgroup.com': 'vitrang@patilgroup.com',
+  'vitrang': 'vitrang@patilgroup.com',
+  'vitrang sompura': 'vitrang@patilgroup.com',
+  'vitrang g sompura': 'vitrang@patilgroup.com',
+
+  'francisyakobu@patilgroup.com': 'francisyakobu@patilgroup.com',
+  'francis': 'francisyakobu@patilgroup.com',
+  'francis yakobu': 'francisyakobu@patilgroup.com',
+  'francisyakobu': 'francisyakobu@patilgroup.com',
+
+  'srikar@patilgroup.com': 'srikar@patilgroup.com',
+  'srikar': 'srikar@patilgroup.com',
+
+  // 4 Users / Sales Reps
+  'krishnamraju@patilgroup.com': 'krishnamraju@patilgroup.com',
+  'krishnamraju': 'krishnamraju@patilgroup.com',
+  'krishnam raju': 'krishnamraju@patilgroup.com',
+  'raju': 'krishnamraju@patilgroup.com',
+  'grk raju': 'krishnamraju@patilgroup.com',
+  'g r k raju': 'krishnamraju@patilgroup.com',
+
+  'saurabhsamya@patilgroup.com': 'saurabhsamya@patilgroup.com',
+  'saurabhsamya': 'saurabhsamya@patilgroup.com',
+  'saurabh': 'saurabhsamya@patilgroup.com',
+  'saurabh samya': 'saurabhsamya@patilgroup.com',
+
+  'ramchandra.s@patilgroup.com': 'ramchandra.s@patilgroup.com',
+  'ramchandra.s': 'ramchandra.s@patilgroup.com',
+  'ramchandra': 'ramchandra.s@patilgroup.com',
+  'ramchandra s': 'ramchandra.s@patilgroup.com',
+
+  'rahul.s@patilgroup.com': 'rahul.s@patilgroup.com',
+  'rahul.s': 'rahul.s@patilgroup.com',
+  'rahul': 'rahul.s@patilgroup.com',
+  'rahul s': 'rahul.s@patilgroup.com',
+  'rohit': 'rahul.s@patilgroup.com'
+};
+
+function normalizeEmail(val){
+  if (!val) return '';
+  const s = String(val).trim().toLowerCase();
+  if (CANONICAL_USER_MAP[s]) return CANONICAL_USER_MAP[s];
+  const prefix = s.split('@')[0];
+  if (CANONICAL_USER_MAP[prefix]) return CANONICAL_USER_MAP[prefix];
+  return s;
+}
+
 function matchSalesPerson(sp, targetUsername){
   if (!sp || !targetUsername) return false;
+  const c1 = normalizeEmail(sp);
+  const c2 = normalizeEmail(targetUsername);
+  if (c1 && c2 && c1 === c2) return true;
   const s = String(sp).trim().toLowerCase();
   const u = String(targetUsername).trim().toLowerCase();
   if (s === u) return true;
-
   const emailPrefix = u.split('@')[0];
   if (s === emailPrefix) return true;
-
-  const MAP = {
-    'raju': ['krishnamraju@patilgroup.com', 'krishnamraju', 'raju', 'grk raju'],
-    'saurabh': ['saurabhsamya@patilgroup.com', 'saurabhsamya', 'saurabh'],
-    'ramchandra': ['ramchandra.s@patilgroup.com', 'ramchandra.s', 'ramchandra'],
-    'rahul': ['rahul.s@patilgroup.com', 'rahul.s', 'rahul'],
-    'rohit': ['rahul.s@patilgroup.com', 'rahul.s', 'rohit', 'ramchandra.s@patilgroup.com'],
-    'sid': ['siddharth@patilgroup.com', 'siddharth'],
-    'vitrang': ['vitrang@patilgroup.com', 'vitrang'],
-    'francis': ['francisyakobu@patilgroup.com', 'francisyakobu', 'francis']
-  };
-
-  if (MAP[s] && MAP[s].some(x => x === u || x === emailPrefix)) return true;
-  if (MAP[emailPrefix] && MAP[emailPrefix].includes(s)) return true;
-
   return s.includes(emailPrefix) || emailPrefix.includes(s);
 }
 
@@ -592,42 +633,37 @@ function daysBetween(a,b){ const d1=new Date(a), d2=new Date(b); if(isNaN(d1)||i
    rep only when required, enforced by the caller before this is invoked. */
 function computeTrackingUpdates(oldOrder, newStage, newNextAction, newFollowUpDate, newActionType, actionDelayReason, actionDelayType, followUpDelayReason, actionRemarks, actionStartDate, actionEndDate, actionActualStartDate, forceActionClose){
   const today = todayStr();
+  const byUser = state.currentUser ? state.currentUser.username : '';
+  const byUserName = state.currentUser ? state.currentUser.name : '';
 
   let stageHistory = (oldOrder.stageHistory||[]).slice();
   const stageChanged = (oldOrder.dealStage||'') !== (newStage||'');
   if(!stageHistory.length && oldOrder.dealStage){
-    stageHistory.push({stage: oldOrder.dealStage, startDate: oldOrder.stageChangedDate || oldOrder.dateLogged || today, endDate: null});
+    stageHistory.push({stage: oldOrder.dealStage, startDate: oldOrder.stageChangedDate || oldOrder.dateLogged || today, endDate: null, by: byUser, byName: byUserName});
   }
   if(stageChanged){
     if(stageHistory.length && !stageHistory[stageHistory.length-1].endDate){
       stageHistory[stageHistory.length-1] = {...stageHistory[stageHistory.length-1], endDate: today};
     }
-    if(newStage) stageHistory.push({stage: newStage, startDate: today, endDate: null});
+    if(newStage) stageHistory.push({stage: newStage, startDate: today, endDate: null, by: byUser, byName: byUserName});
   }
   const stageChangedDate = stageChanged ? today : (oldOrder.stageChangedDate||'');
 
   let actionHistory = (oldOrder.actionHistory||[]).slice();
   let nextActionChangedDate = oldOrder.nextActionChangedDate || '';
   const actionChanged = (oldOrder.nextAction||'') !== (newNextAction||'');
-  // forceActionClose is true whenever the sales person went through the "Update Action (Delayed)"
-  // gate (reason/type/actual-start-date/remarks) \u2014 that gate is itself the rep declaring the
-  // OLD action done, so it must close out here even if the new Next Follow up Action text happens
-  // to read the same as the old one (e.g. still "Confirm PO terms", just restarting the clock).
   if(actionChanged || forceActionClose){
     if(actionHistory.length && !actionHistory[actionHistory.length-1].endDate){
-      // Actual end date is always "today" — the date this update is being made, captured automatically.
-      // Actual start date is whatever the sales person confirms they actually started work (not the date
-      // the action was merely logged), so Actual Total Days reflects real elapsed working time.
-      actionHistory[actionHistory.length-1] = {...actionHistory[actionHistory.length-1], setDate: actionActualStartDate || actionHistory[actionHistory.length-1].setDate, endDate: today, delayReason: actionDelayReason||'', delayType: actionDelayType||'', remarks: actionRemarks||''};
+      actionHistory[actionHistory.length-1] = {...actionHistory[actionHistory.length-1], setDate: actionActualStartDate || actionHistory[actionHistory.length-1].setDate, endDate: today, delayReason: actionDelayReason||'', delayType: actionDelayType||'', remarks: actionRemarks||'', by: byUser, byName: byUserName};
     } else if(oldOrder.nextAction){
-      actionHistory.push({text: oldOrder.nextAction, setDate: actionActualStartDate || nextActionChangedDate || oldOrder.dateLogged || today, endDate: today, actionType:'', delayReason: actionDelayReason||'', delayType: actionDelayType||'', remarks: actionRemarks||'', plannedStart: oldOrder.actionStartDate||'', plannedEnd: oldOrder.actionEndDate||''});
+      actionHistory.push({text: oldOrder.nextAction, setDate: actionActualStartDate || nextActionChangedDate || oldOrder.dateLogged || today, endDate: today, actionType:'', delayReason: actionDelayReason||'', delayType: actionDelayType||'', remarks: actionRemarks||'', plannedStart: oldOrder.actionStartDate||'', plannedEnd: oldOrder.actionEndDate||'', by: byUser, byName: byUserName});
     }
     if(newNextAction){
-      actionHistory.push({text: newNextAction, setDate: today, endDate: null, actionType: newActionType||'', delayReason:'', remarks:'', plannedStart: actionStartDate||'', plannedEnd: actionEndDate||''});
+      actionHistory.push({text: newNextAction, setDate: today, endDate: null, actionType: newActionType||'', delayReason:'', remarks:'', plannedStart: actionStartDate||'', plannedEnd: actionEndDate||'', by: byUser, byName: byUserName});
     }
     nextActionChangedDate = today;
   } else if(actionHistory.length && !actionHistory[actionHistory.length-1].endDate) {
-    if(newActionType) actionHistory[actionHistory.length-1] = {...actionHistory[actionHistory.length-1], actionType: newActionType};
+    if(newActionType) actionHistory[actionHistory.length-1] = {...actionHistory[actionHistory.length-1], actionType: newActionType, by: byUser, byName: byUserName};
     if(actionStartDate) actionHistory[actionHistory.length-1] = {...actionHistory[actionHistory.length-1], plannedStart: actionStartDate};
     if(actionEndDate) actionHistory[actionHistory.length-1] = {...actionHistory[actionHistory.length-1], plannedEnd: actionEndDate};
   }
@@ -640,7 +676,9 @@ function computeTrackingUpdates(oldOrder, newStage, newNextAction, newFollowUpDa
       targetDate: oldOrder.followUpDate,
       doneDate: today,
       delayReason: followUpDelayReason||'',
-      actionKey: oldOrder.nextActionChangedDate || oldOrder.dateLogged || today
+      actionKey: oldOrder.nextActionChangedDate || oldOrder.dateLogged || today,
+      by: byUser,
+      byName: byUserName
     });
   }
 
@@ -841,9 +879,9 @@ async function runSeed(){
 /* ================= FIELD ACTIVITY & LOCATION ================= */
 async function pingActivity(){
   const u = state.currentUser;
-  if(!u || u.role!=='rep') return;
+  if(!u || !u.username) return;
   const existing = state.activity[u.username] || {};
-  state.activity[u.username] = { ...existing, username:u.username, lastSeen: Date.now() };
+  state.activity[u.username] = { ...existing, username: u.username, name: u.name, role: u.role, lastSeen: Date.now() };
   await storageSet(K_ACTIVITY, state.activity);
   if(!navigator.geolocation) return;
   navigator.geolocation.getCurrentPosition(async (pos)=>{
@@ -920,11 +958,11 @@ function dedupeOrders(arr) {
 function myOrders(){
   if(!state.currentUser) return [];
   if(state.currentUser.role==='ceo'){
-    if(state.viewingAsRep) return state.orders.filter(o=>o.salesPerson===state.viewingAsRep || matchSalesPerson(o.salesPerson, state.viewingAsRep));
-    if(state.topTab==='team') return state.orders; // Team tab overview — team-wide
+    if(state.viewingAsRep) return state.orders.filter(o=>matchSalesPerson(o.salesPerson, state.viewingAsRep) || matchSalesPerson(o.createdBy, state.viewingAsRep));
     return state.orders; // CEO / Manager sees all deals across the entire pipeline
   }
-  return state.orders.filter(o=>o.salesPerson===state.currentUser.username || matchSalesPerson(o.salesPerson, state.currentUser.username));
+  const u = state.currentUser.username;
+  return state.orders.filter(o=>matchSalesPerson(o.salesPerson, u) || matchSalesPerson(o.createdBy, u));
 }
 function repName(username){
   if(!username) return '—';
@@ -1316,8 +1354,8 @@ async function startSession(user){
   pingActivity();
   if(window.__pingTimer) clearInterval(window.__pingTimer);
   window.__pingTimer = setInterval(pingActivity, 5*60*1000);
-  // Immediately pull live centralized data in the background
-  backgroundRemoteSync(false);
+  // Immediately pull live centralized data from cloud upon login so Laptop 2 displays all identical records
+  await backgroundRemoteSync(false);
 }
 
 function doLogout(){
@@ -1364,9 +1402,17 @@ function renderShell(){
     </div>
     <div class="who">
       <a href="https://docs.google.com/spreadsheets/d/15FpOiyRhCW-Ln4L0w2Jq5NILclh9HW16uqqt6m5-uIM/edit" target="_blank" rel="noopener" class="cloud-sheet-badge" title="Live Google Sheet database — click to view all rows"><span class="cloud-sheet-dot"></span>Google Sheet Live</a>
+      <button class="btn" style="padding:6px 12px;font-size:12px;display:inline-flex;align-items:center;gap:6px;" onclick="backgroundRemoteSync(true)" title="Fetch and sync latest data from cloud">
+        <span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${state.syncStatus==='error'?'#a63a2f':state.syncStatus==='syncing'?'#d65b28':'#2f6b47'};"></span>
+        ${state.syncStatus==='syncing'?'Syncing...':'Sync Cloud'}
+      </button>
       <button class="btn btn-primary" onclick="openOrderModal()">+ New Lead</button>
       <div class="avatar">${esc(initials)}</div>
-      <div><div class="name">${esc(userName)}</div><div class="role">${esc(u.roleTitle || (u.role==='ceo'?'CEO / Manager':'Sales person'))}</div></div>
+      <div>
+        <div class="name">${esc(userName)}</div>
+        <div class="role">${esc(u.roleTitle || (u.role==='ceo'?'CEO / Manager':'Sales person'))}</div>
+        <div class="mono" style="font-size:10.5px;color:var(--muted);">${esc(u.username||'')}</div>
+      </div>
       <button class="btn" onclick="doLogout()">Sign out</button>
     </div>
   </div>
@@ -2289,9 +2335,18 @@ function renderDealCycle(){
 
 /* ================= ORDER MODAL (Add / Edit) ================= */
 function openOrderModal(id, skipDelay=false){
+  const curUserEmail = state.currentUser ? state.currentUser.username : '';
+  const curUserName = state.currentUser ? state.currentUser.name : '';
+  const isRep = state.currentUser && state.currentUser.role === 'rep';
+
   const data = id ? state.orders.find(o=>o.id===id) : {
     id:null, dateLogged: todayStr(), leadSourceType:'Outbound', leadSourceName:LEAD_SOURCES['Outbound'][0], leadSourceOther:'', leadSourceVisitPath:[],
-    salesPerson: state.currentUser.role==='rep' ? state.currentUser.username : (reps()[0]?.username||''),
+    salesPerson: isRep ? curUserEmail : (curUserEmail || reps()[0]?.username || ''),
+    createdBy: curUserEmail,
+    createdByName: curUserName,
+    lastUpdatedBy: curUserEmail,
+    lastUpdatedByName: curUserName,
+    lastUpdatedAt: new Date().toISOString(),
     clientName:'', clientPOC:'', clientPOCDesignation:'', clientMobile:'', clientEmail:'',
     product:'', projectName:'', projectType:'', location:'', estimatedValue:'',
     dealStage:STAGES[0], priority:'Warm', reasonLostWon:'', closedDate:'', stageChangedDate:'',
@@ -2607,9 +2662,11 @@ async function saveQuickUpdate(id){
     order.followUpDate = followUpDate;
     order.followUpHistory = tracking.followUpHistory;
     order.reasonLostWon = grab('qf-reasonLostWon');
-    order.closedDate = closedDate;
-
-    await storageSet(K_ORDERS, state.orders);
+    const curUserEmail = state.currentUser ? state.currentUser.username : '';
+    const curUserName = state.currentUser ? state.currentUser.name : '';
+    order.lastUpdatedBy = curUserEmail;
+    order.lastUpdatedByName = curUserName;
+    order.lastUpdatedAt = new Date().toISOString();
 
     const nowLost = isDealLost(order.dealStage);
     if(nowLost && !wasLost){
@@ -2619,12 +2676,16 @@ async function saveQuickUpdate(id){
           id: uid(), linkedOrderId: order.id, dateAnalysed: todayStr(),
           clientName: order.clientName, projectName: order.projectName,
           estimatedValue: order.estimatedValue, competitorWhoWon:'', rootCause: order.reasonLostWon||'',
-          improvementsRequired:'', actionOwner:'', targetDate:'', status:'Not started', notes:[]
+          improvementsRequired:'', actionOwner:'', targetDate:'', status:'Not started', notes:[],
+          salesPerson: order.salesPerson, createdBy: curUserEmail, createdByName: curUserName,
+          lastUpdatedBy: curUserEmail, lastUpdatedByName: curUserName, lastUpdatedAt: new Date().toISOString()
         });
         await storageSet(K_LOST, state.lostOrders);
       }
     }
     closeModal();
+    render();
+    await saveLeadToCloud(order);
   } finally {
     state.isSavingOrder = false;
   }
@@ -2713,9 +2774,16 @@ function renderOrderModal(){
       <p class="modal-sub">${isEdit?esc(d.clientName):'Log a new lead in the pipeline'}</p>
       <div class="grid2">
         <div class="field"><label>Lead Received Date</label><input type="date" id="f-dateLogged" value="${esc(d.dateLogged)}"></div>
-        <div class="field"><label>Sales person</label>
-          ${canPickRep ? `<select id="f-salesPerson">${reps().map(r=>`<option value="${r.username}" ${r.username===d.salesPerson?'selected':''}>${esc(r.name)}</option>`).join('')}</select>`
-            : `<input value="${esc(repName(d.salesPerson))}" disabled>`}
+        <div class="field"><label>Sales person (Email ID linked)</label>
+          ${canPickRep ? `<select id="f-salesPerson">
+            <optgroup label="Sales Representatives">
+              ${state.users.filter(u=>u.role==='rep').map(r=>`<option value="${r.username}" ${matchSalesPerson(r.username, d.salesPerson)?'selected':''}>${esc(r.name)} (${esc(r.username)})</option>`).join('')}
+            </optgroup>
+            <optgroup label="Management & Leadership">
+              ${state.users.filter(u=>u.role==='ceo').map(r=>`<option value="${r.username}" ${matchSalesPerson(r.username, d.salesPerson)?'selected':''}>${esc(r.name)} (${esc(r.username)})</option>`).join('')}
+            </optgroup>
+          </select>`
+            : `<input value="${esc(repName(d.salesPerson))} (${esc(d.salesPerson || (state.currentUser?state.currentUser.username:''))})" disabled>`}
         </div>
         <div class="field"><label>Lead source type *</label><select id="f-leadSourceType" onchange="updateLeadSourceNames('f')">${LEAD_SOURCE.map(s=>`<option ${s===d.leadSourceType?'selected':''}>${s}</option>`).join('')}</select></div>
         <div class="field"><label>Lead source name</label>
@@ -3117,12 +3185,21 @@ async function saveOrder(){
   if (saveBtn) { saveBtn.disabled = true; saveBtn.innerText = 'Saving...'; }
 
   try {
+    const curUserEmail = state.currentUser ? state.currentUser.username : '';
+    const curUserName = state.currentUser ? state.currentUser.name : '';
+    const rawSp = document.getElementById('f-salesPerson') ? grab('f-salesPerson') : (d.salesPerson || curUserEmail);
+    const normalizedSp = normalizeEmail(rawSp) || curUserEmail;
     const actionActualStartDate = state.modal.tempActualStartDate || '';
     const tracking = computeTrackingUpdates(d, newStage, newNextAction, newFollowUpDate, newActionType, actionDelayReason, actionDelayType, '', actionRemarks, newActionStartDate, newActionEndDate, actionActualStartDate, forceActionClose);
     const updated = {
       id: d.id,
       dateLogged: grab('f-dateLogged'),
-      salesPerson: document.getElementById('f-salesPerson') ? grab('f-salesPerson') : d.salesPerson,
+      salesPerson: normalizedSp,
+      createdBy: d.createdBy || curUserEmail,
+      createdByName: d.createdByName || curUserName,
+      lastUpdatedBy: curUserEmail,
+      lastUpdatedByName: curUserName,
+      lastUpdatedAt: new Date().toISOString(),
       leadSourceType: grab('f-leadSourceType'),
       leadSourceName: grab('f-leadSourceName'),
       leadSourceOther: d.leadSourceName==='Others' ? grab('f-leadSourceOther') : '',
@@ -3164,9 +3241,11 @@ async function saveOrder(){
           id: uid(), linkedOrderId: updated.id, dateAnalysed: todayStr(),
           clientName: updated.clientName, projectName: updated.projectName,
           estimatedValue: updated.estimatedValue, competitorWhoWon:'', rootCause: updated.reasonLostWon||'',
-          improvementsRequired:'', actionOwner:'', targetDate:'', status:'Not started', notes:[]
+          improvementsRequired:'', actionOwner:'', targetDate:'', status:'Not started', notes:[],
+          salesPerson: updated.salesPerson, createdBy: curUserEmail, createdByName: curUserName,
+          lastUpdatedBy: curUserEmail, lastUpdatedByName: curUserName, lastUpdatedAt: new Date().toISOString()
         });
-        storageSet(K_LOST, state.lostOrders);
+        await storageSet(K_LOST, state.lostOrders);
       }
     }
     closeModal();
@@ -3184,8 +3263,19 @@ async function addOrderUpdate(orderId){
   if(!order) return;
   state.isSavingOrder = true;
   try {
+    const curUserEmail = state.currentUser ? state.currentUser.username : '';
+    const curUserName = state.currentUser ? state.currentUser.name : '';
     order.updates = order.updates || [];
-    order.updates.push({ date: grab('order-update-date') || todayStr(), text, by: state.currentUser.name });
+    order.updates.push({
+      date: grab('order-update-date') || todayStr(),
+      text,
+      by: curUserName,
+      byEmail: curUserEmail,
+      timestamp: new Date().toISOString()
+    });
+    order.lastUpdatedBy = curUserEmail;
+    order.lastUpdatedByName = curUserName;
+    order.lastUpdatedAt = new Date().toISOString();
     await saveLeadToCloud(order);
     if(state.modal && state.modal.data && state.modal.data.id===orderId) state.modal.data.updates = order.updates;
     render();
@@ -3304,10 +3394,15 @@ async function addCoordination(){
   const orderId = grab('c-orderId');
   const order = state.orders.find(o=>o.id===orderId);
   if(!order){ alert('Invalid Offer ID.'); return; }
+  const curUserEmail = state.currentUser ? state.currentUser.username : '';
+  const curUserName = state.currentUser ? state.currentUser.name : '';
   state.coordination.push({
     id:uid(), dateLogged: todayStr(), orderId: order.id, clientName: order.clientName, projectName: order.projectName,
     category: grab('c-category'), activity: grab('c-activity'), support: grab('c-support'), fulfillment: grab('c-fulfillment'),
-    targetDate: grab('c-targetDate'), supportDate: ''
+    targetDate: grab('c-targetDate'), supportDate: '',
+    salesPerson: order.salesPerson || curUserEmail,
+    createdBy: curUserEmail,
+    createdByName: curUserName
   });
   await storageSet(K_COORD, state.coordination);
   state.coordSubTab = 'list';
@@ -3465,11 +3560,15 @@ async function addLostOrderEntry(){
   const id = grab('l-new-orderId');
   const order = state.orders.find(o=>o.id===id);
   if(!order){ alert('Invalid Offer ID.'); return; }
+  const curUserEmail = state.currentUser ? state.currentUser.username : '';
+  const curUserName = state.currentUser ? state.currentUser.name : '';
   let l = state.lostOrders.find(x=>x.linkedOrderId===id);
   if(!l) {
-    l = { id: uid(), linkedOrderId: id, dateAnalysed: todayStr(), clientName: order.clientName, projectName: order.projectName, estimatedValue: order.estimatedValue, notes:[] };
+    l = { id: uid(), linkedOrderId: id, dateAnalysed: todayStr(), clientName: order.clientName, projectName: order.projectName, estimatedValue: order.estimatedValue, notes:[], salesPerson: order.salesPerson || curUserEmail, createdBy: curUserEmail, createdByName: curUserName };
     state.lostOrders.push(l);
   }
+  l.lastUpdatedBy = curUserEmail;
+  l.lastUpdatedByName = curUserName;
   l.competitorWhoWon = grab('l-new-comp');
   l.status = grab('l-new-status');
   l.rootCause = grab('l-new-rootCause');
