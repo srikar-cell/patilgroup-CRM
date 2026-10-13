@@ -236,6 +236,39 @@ input[type="number"]{ -moz-appearance:textfield; appearance:textfield; }
   .login-card { width: 100%; padding: 24px 18px; }
   .brand h1 { font-size: 18px; }
 }
+.cloud-sheet-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 10px;
+  border-radius: 6px;
+  background: #eaf5ec;
+  color: #206336;
+  font-size: 11.5px;
+  font-weight: 600;
+  text-decoration: none;
+  border: 1px solid #b7dfbe;
+  transition: all 0.2s ease;
+  white-space: nowrap;
+}
+.cloud-sheet-badge:hover {
+  background: #d4ebd8;
+  color: #174d28;
+  border-color: #9eccaa;
+}
+.cloud-sheet-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #28a745;
+  box-shadow: 0 0 0 2px rgba(40,167,69,0.25);
+  animation: pulseDot 2s infinite;
+}
+@keyframes pulseDot {
+  0% { box-shadow: 0 0 0 0 rgba(40,167,69,0.5); }
+  70% { box-shadow: 0 0 0 5px rgba(40,167,69,0); }
+  100% { box-shadow: 0 0 0 0 rgba(40,167,69,0); }
+}
 </style>
 </head>
 <body>
@@ -827,6 +860,7 @@ function dedupeOrders(arr) {
   const result = [];
   for (const item of arr) {
     if (!item || typeof item !== 'object' || !item.clientName) continue;
+    if (item.id && (item.id.startsWith('lap2-order-') || item.id.startsWith('node-test-') || item.id.startsWith('test-real-save-order-'))) continue;
 
     const idKey = item.id ? 'id:' + item.id : null;
     if (idKey) {
@@ -1124,7 +1158,7 @@ async function saveSession(){
   }
 }
 
-function startSession(user){
+async function startSession(user){
   state.currentUser=user; state.topTab=(user.role==='ceo'?'summary':'mypage'); state.activeTab='dashboard'; state.dashboardSubTab='leads'; state.viewingAsRep=null;
   saveSession();
   render();
@@ -1132,7 +1166,7 @@ function startSession(user){
   if(window.__pingTimer) clearInterval(window.__pingTimer);
   window.__pingTimer = setInterval(pingActivity, 5*60*1000);
   // Immediately pull live centralized data from Google Sheet upon signing in
-  backgroundRemoteSync(false);
+  await backgroundRemoteSync(false);
 }
 
 function doLogout(){
@@ -1177,6 +1211,7 @@ function renderShell(){
       </div>
     </div>
     <div class="who">
+      <a href="https://docs.google.com/spreadsheets/d/15FpOiyRhCW-Ln4L0w2Jq5NILclh9HW16uqqt6m5-uIM/edit" target="_blank" rel="noopener" class="cloud-sheet-badge" title="Live Google Sheet database — click to view all rows"><span class="cloud-sheet-dot"></span>Google Sheet Live</a>
       <button class="btn btn-primary" onclick="openOrderModal()">+ New Lead</button>
       <div class="avatar">${esc(initials)}</div>
       <div><div class="name">${esc(u.name)}</div><div class="role">${esc(u.roleTitle || (u.role==='ceo'?'CEO / Manager':'Sales person'))}</div></div>
@@ -3854,11 +3889,11 @@ async function init(){
   // Instant remote sync to fetch centralized Google Sheet data
   await backgroundRemoteSync();
 
-  // Multi-laptop continuous synchronization: poll Google Sheet every 15 seconds
+  // Multi-laptop continuous synchronization: poll Google Sheet every 10 seconds
   if (window.__cloudSyncTimer) clearInterval(window.__cloudSyncTimer);
   window.__cloudSyncTimer = setInterval(() => {
     backgroundRemoteSync(false);
-  }, 15000);
+  }, 10000);
 
   // Instant sync whenever user switches to this window or tab
   window.addEventListener('focus', () => { backgroundRemoteSync(false); });
@@ -3875,10 +3910,10 @@ async function backgroundRemoteSync(isManual = false){
     let u, o, c, l, a;
     let gotBatch = false;
 
-    // 1. Try single ultra-fast batch GET (action=get_all)
+    // 1. Try single ultra-fast batch GET (action=get_all) with 25s generous timeout for cold starts
     try {
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 8000);
+      const timeoutId = setTimeout(() => controller.abort(), 25000);
       const batchRes = await fetch(APPS_SCRIPT_URL + '?action=get_all', { redirect: 'follow', signal: controller.signal });
       clearTimeout(timeoutId);
       if (batchRes.ok) {
@@ -3941,11 +3976,13 @@ async function backgroundRemoteSync(isManual = false){
       // 1. Authoritative remote Google Sheets data
       o.forEach(item => { if (item && item.id) orderMap.set(item.id, item); });
 
-      // 2. Preserve any local leads that are pending or not yet in Google Sheets (e.g. from other laptop)
+      // 2. Preserve any local leads that are pending or not yet in Google Sheets (e.g. entered on another laptop while offline)
       let hasMissingLocal = false;
+      const strandedLeads = [];
       (state.orders || []).forEach(item => {
-        if (item && item.id && !orderMap.has(item.id)) {
+        if (item && item.id && !orderMap.has(item.id) && item.clientName) {
           orderMap.set(item.id, item);
+          strandedLeads.push(item);
           hasMissingLocal = true;
         }
       });
@@ -3956,7 +3993,8 @@ async function backgroundRemoteSync(isManual = false){
       try { localStorage.setItem(K_ORDERS, JSON.stringify(cleaned)); } catch(e) {}
 
       // 3. If there were local leads that were missing from Google Sheets, immediately upload them!
-      if (hasMissingLocal) {
+      if (hasMissingLocal && strandedLeads.length > 0) {
+        console.log(`Synchronizing ${strandedLeads.length} offline local leads to Google Sheets cloud...`);
         await storageSet(K_ORDERS, cleaned);
       }
       updated = true;
