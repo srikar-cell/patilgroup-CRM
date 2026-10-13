@@ -282,29 +282,13 @@ input[type="number"]{ -moz-appearance:textfield; appearance:textfield; }
       </div>
       <div class="login-card" style="text-align:center;">
         <h1 style="margin-bottom:6px;">Sign in</h1>
-        <p class="sub mono" style="letter-spacing:.03em;margin-bottom:18px;">Sign in with your Google or Patil Group ID</p>
-        <div style="display:flex;justify-content:center;margin:12px 0 16px;">
+        <p class="sub mono" style="letter-spacing:.03em;margin-bottom:20px;">Use your @patilgroup.com Google Account</p>
+        <div style="display:flex;justify-content:center;margin:16px 0;">
           <div id="google-signin-btn" style="min-height:44px;display:flex;align-items:center;justify-content:center;width:100%;">
             <div class="google-btn-native" onclick="triggerGoogleSignIn()" style="display:flex;align-items:center;justify-content:center;gap:10px;width:300px;height:42px;border:1px solid #dadce0;border-radius:4px;background:#ffffff;cursor:pointer;font-family:'Inter',sans-serif;font-size:14px;font-weight:500;color:#3c4043;box-shadow:0 1px 2px rgba(60,64,67,0.08);user-select:none;">
               <svg width="18" height="18" viewBox="0 0 18 18"><path fill="#4285F4" d="M17.64 9.2c0-.637-.057-1.251-.164-1.84H9v3.481h4.844c-.209 1.125-.843 2.078-1.796 2.717v2.258h2.908c1.702-1.567 2.684-3.874 2.684-6.616z"/><path fill="#34A853" d="M9 18c2.43 0 4.467-.806 5.956-2.184l-2.908-2.258c-.806.54-1.837.86-3.048.86-2.344 0-4.328-1.584-5.036-3.711H.957v2.332A8.997 8.997 0 0 0 9 18z"/><path fill="#FBBC05" d="M3.964 10.707c-.18-.54-.282-1.117-.282-1.707s.102-1.167.282-1.707V4.961H.957A8.996 8.996 0 0 0 0 9c0 1.452.348 2.827.957 4.039l3.007-2.332z"/><path fill="#EA4335" d="M9 3.58c1.321 0 2.508.454 3.44 1.345l2.582-2.58C13.463.891 11.426 0 9 0A8.997 8.997 0 0 0 .957 4.961L3.964 7.293C4.672 5.166 6.656 3.58 9 3.58z"/></svg>
               <span>Sign in with Google</span>
             </div>
-          </div>
-        </div>
-        <div class="login-divider" style="margin:16px 0 14px;"><span>or enter email</span></div>
-        <form onsubmit="handleDirectEmailLogin(event)" style="margin-top:10px;">
-          <div style="display:flex;gap:8px;">
-            <input id="direct-email-input" type="email" placeholder="name@patilgroup.com or gmail ID" style="padding:10px 12px;border:1px solid var(--border-strong);border-radius:6px;font-size:13px;flex:1;background:#fff;color:var(--text);" required>
-            <button type="submit" class="btn btn-primary" style="padding:10px 16px;white-space:nowrap;font-size:13px;">Sign In</button>
-          </div>
-        </form>
-        <div style="margin-top:20px;text-align:left;background:#f8fafc;border:1px solid #e2e8f0;border-radius:6px;padding:12px 14px;">
-          <div style="font-size:11px;font-family:var(--font-mono);text-transform:uppercase;color:var(--muted);margin-bottom:8px;letter-spacing:.04em;">Quick 1-Click Access:</div>
-          <div style="display:flex;flex-wrap:wrap;gap:6px;">
-            <button type="button" class="btn" style="padding:5px 10px;font-size:12px;background:#fff;" onclick="quickLogin('srikar@patilgroup.com')">Srikar (Digital Engr)</button>
-            <button type="button" class="btn" style="padding:5px 10px;font-size:12px;background:#fff;" onclick="quickLogin('siddharth@patilgroup.com')">Siddharth (CEO)</button>
-            <button type="button" class="btn" style="padding:5px 10px;font-size:12px;background:#fff;" onclick="quickLogin('vitrang@patilgroup.com')">Vitrang (Head Precast)</button>
-            <button type="button" class="btn" style="padding:5px 10px;font-size:12px;background:#fff;" onclick="quickLogin('krishnamraju@patilgroup.com')">GRK Raju (Rep)</button>
           </div>
         </div>
       </div>
@@ -1284,31 +1268,6 @@ function loginHeroBrand(subtitle){
     </div>`;
 }
 
-function quickLogin(email){
-  const u = authenticateUser(email);
-  if(u) {
-    state.loginError = '';
-    startSession(u);
-  }
-}
-
-function handleDirectEmailLogin(e){
-  if(e) e.preventDefault();
-  const input = document.getElementById('direct-email-input');
-  if(!input) return;
-  const email = input.value.trim().toLowerCase();
-  if(!email){
-    state.loginError = 'Please enter your email.';
-    render();
-    return;
-  }
-  const u = authenticateUser(email);
-  if(u){
-    state.loginError = '';
-    startSession(u);
-  }
-}
-
 function renderLogin(){
   return `
   <div class="login-wrap">
@@ -1317,35 +1276,16 @@ function renderLogin(){
       ${loginHeroBrand('Pipeline control — B2B infrastructure sales tracker')}
       <div class="login-card" style="text-align:center;">
         <h1 style="margin-bottom:6px;">Sign in</h1>
-        <p class="sub mono" style="letter-spacing:.03em;margin-bottom:18px;">Sign in with your Google or Patil Group ID</p>
+        <p class="sub mono" style="letter-spacing:.03em;margin-bottom:20px;">Use your @patilgroup.com Google Account</p>
 
         ${state.loginError ? `<div class="login-error" style="text-align:left;margin-bottom:16px;">${esc(state.loginError)}</div>` : ''}
 
-        <div style="display:flex;justify-content:center;margin:12px 0 16px;">
+        <div style="display:flex;justify-content:center;margin:16px 0;">
           <div id="google-signin-btn" style="min-height:44px;display:flex;align-items:center;justify-content:center;width:100%;">
             <div class="google-btn-native" onclick="triggerGoogleSignIn()" style="display:flex;align-items:center;justify-content:center;gap:10px;width:300px;height:42px;border:1px solid #dadce0;border-radius:4px;background:#ffffff;cursor:pointer;font-family:'Inter',sans-serif;font-size:14px;font-weight:500;color:#3c4043;box-shadow:0 1px 2px rgba(60,64,67,0.08);user-select:none;">
               <svg width="18" height="18" viewBox="0 0 18 18"><path fill="#4285F4" d="M17.64 9.2c0-.637-.057-1.251-.164-1.84H9v3.481h4.844c-.209 1.125-.843 2.078-1.796 2.717v2.258h2.908c1.702-1.567 2.684-3.874 2.684-6.616z"/><path fill="#34A853" d="M9 18c2.43 0 4.467-.806 5.956-2.184l-2.908-2.258c-.806.54-1.837.86-3.048.86-2.344 0-4.328-1.584-5.036-3.711H.957v2.332A8.997 8.997 0 0 0 9 18z"/><path fill="#FBBC05" d="M3.964 10.707c-.18-.54-.282-1.117-.282-1.707s.102-1.167.282-1.707V4.961H.957A8.996 8.996 0 0 0 0 9c0 1.452.348 2.827.957 4.039l3.007-2.332z"/><path fill="#EA4335" d="M9 3.58c1.321 0 2.508.454 3.44 1.345l2.582-2.58C13.463.891 11.426 0 9 0A8.997 8.997 0 0 0 .957 4.961L3.964 7.293C4.672 5.166 6.656 3.58 9 3.58z"/></svg>
               <span>Sign in with Google</span>
             </div>
-          </div>
-        </div>
-
-        <div class="login-divider" style="margin:16px 0 14px;"><span>or enter email</span></div>
-
-        <form onsubmit="handleDirectEmailLogin(event)" style="margin-top:10px;">
-          <div style="display:flex;gap:8px;">
-            <input id="direct-email-input" type="email" placeholder="name@patilgroup.com or gmail ID" style="padding:10px 12px;border:1px solid var(--border-strong);border-radius:6px;font-size:13px;flex:1;background:#fff;color:var(--text);" required>
-            <button type="submit" class="btn btn-primary" style="padding:10px 16px;white-space:nowrap;font-size:13px;">Sign In</button>
-          </div>
-        </form>
-
-        <div style="margin-top:20px;text-align:left;background:#f8fafc;border:1px solid #e2e8f0;border-radius:6px;padding:12px 14px;">
-          <div style="font-size:11px;font-family:var(--font-mono);text-transform:uppercase;color:var(--muted);margin-bottom:8px;letter-spacing:.04em;">Quick 1-Click Access:</div>
-          <div style="display:flex;flex-wrap:wrap;gap:6px;">
-            <button type="button" class="btn" style="padding:5px 10px;font-size:12px;background:#fff;" onclick="quickLogin('srikar@patilgroup.com')">Srikar (Digital Engr)</button>
-            <button type="button" class="btn" style="padding:5px 10px;font-size:12px;background:#fff;" onclick="quickLogin('siddharth@patilgroup.com')">Siddharth (CEO)</button>
-            <button type="button" class="btn" style="padding:5px 10px;font-size:12px;background:#fff;" onclick="quickLogin('vitrang@patilgroup.com')">Vitrang (Head Precast)</button>
-            <button type="button" class="btn" style="padding:5px 10px;font-size:12px;background:#fff;" onclick="quickLogin('krishnamraju@patilgroup.com')">GRK Raju (Rep)</button>
           </div>
         </div>
       </div>
