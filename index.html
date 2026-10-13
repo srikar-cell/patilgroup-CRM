@@ -3758,21 +3758,19 @@ function renderTeam(){
 async function clearSampleData(){
   if(!confirm('This will permanently delete ALL leads, orders, coordination logs, and test entries from BOTH this page and Google Sheets. Continue and start with a completely fresh, empty CRM?')) return;
   state.orders = []; state.coordination = []; state.lostOrders = []; state.activity = {};
-  localStorage.setItem(K_ORDERS, '[]');
-  localStorage.setItem(K_COORD, '[]');
-  localStorage.setItem(K_LOST, '[]');
-  localStorage.setItem(K_ACTIVITY, '{}');
+  const now = Date.now();
+  try {
+    localStorage.setItem(K_ORDERS, '[]');
+    localStorage.setItem(K_COORD, '[]');
+    localStorage.setItem(K_LOST, '[]');
+    localStorage.setItem(K_ACTIVITY, '{}');
+    localStorage.setItem('crm:last_wipe_epoch', String(now));
+  } catch(e) {}
   try {
     await fetch(APPS_SCRIPT_URL + '?action=start_fresh', { redirect: 'follow' });
   } catch(e) {
     console.warn('start_fresh call error:', e);
   }
-  await Promise.all([
-    storageSet(K_ORDERS, state.orders),
-    storageSet(K_COORD, state.coordination),
-    storageSet(K_LOST, state.lostOrders),
-    storageSet(K_ACTIVITY, state.activity)
-  ]);
   alert('All past entered data has been completely deleted from both Google Sheets and this CRM. You now have a 100% clean, fresh slate!');
   render();
 }
@@ -3818,6 +3816,20 @@ async function removeRep(username){
 /* ================= INIT ================= */
 async function init(){
   state.syncStatus = 'syncing';
+
+  // Force wipe check: purges old leftover test data across all client devices and laptops
+  const BUILD_WIPE_EPOCH = 1791876065412;
+  try {
+    const lastWipe = Number(localStorage.getItem('crm:last_wipe_epoch') || 0);
+    if (lastWipe < BUILD_WIPE_EPOCH) {
+      localStorage.setItem(K_ORDERS, '[]');
+      localStorage.setItem(K_COORD, '[]');
+      localStorage.setItem(K_LOST, '[]');
+      localStorage.setItem(K_ACTIVITY, '{}');
+      localStorage.setItem('crm:last_wipe_epoch', String(BUILD_WIPE_EPOCH));
+    }
+  } catch(e) {}
+
   try {
     const u = localStorage.getItem(K_USERS);
     const o = localStorage.getItem(K_ORDERS);
@@ -3920,7 +3932,28 @@ async function backgroundRemoteSync(isManual = false){
         const text = await batchRes.text();
         if (text && text.trim().startsWith('{')) {
           const batchData = JSON.parse(text);
-          if (batchData && batchData.status === 'success' && batchData.orders !== undefined) {
+          if (batchData && batchData.status === 'success') {
+            const cloudWipeEpoch = Number(batchData.wipeEpoch || 0);
+            const curWipe = Number(localStorage.getItem('crm:last_wipe_epoch') || 0);
+            if (cloudWipeEpoch > 0 && cloudWipeEpoch > curWipe) {
+              console.warn('Database wipe triggered from cloud. Purging local storage and state...');
+              state.orders = [];
+              state.coordination = [];
+              state.lostOrders = [];
+              state.activity = {};
+              try {
+                localStorage.setItem(K_ORDERS, '[]');
+                localStorage.setItem(K_COORD, '[]');
+                localStorage.setItem(K_LOST, '[]');
+                localStorage.setItem(K_ACTIVITY, '{}');
+                localStorage.setItem('crm:last_wipe_epoch', String(cloudWipeEpoch));
+              } catch(e) {}
+              state.syncStatus = 'synced';
+              state.lastSyncTime = Date.now();
+              render();
+              return;
+            }
+
             u = batchData.users;
             o = batchData.orders;
             c = batchData.coordination;
@@ -3972,30 +4005,36 @@ async function backgroundRemoteSync(isManual = false){
     }
 
     if (o && Array.isArray(o)) {
-      const orderMap = new Map();
-      // 1. Authoritative remote Google Sheets data
-      o.forEach(item => { if (item && item.id) orderMap.set(item.id, item); });
+      if (o.length === 0) {
+        // Cloud is deliberately wiped and empty — ensure local state is also 100% empty
+        state.orders = [];
+        try { localStorage.setItem(K_ORDERS, '[]'); } catch(e) {}
+      } else {
+        const orderMap = new Map();
+        // 1. Authoritative remote Google Sheets data
+        o.forEach(item => { if (item && item.id) orderMap.set(item.id, item); });
 
-      // 2. Preserve any local leads that are pending or not yet in Google Sheets (e.g. entered on another laptop while offline)
-      let hasMissingLocal = false;
-      const strandedLeads = [];
-      (state.orders || []).forEach(item => {
-        if (item && item.id && !orderMap.has(item.id) && item.clientName) {
-          orderMap.set(item.id, item);
-          strandedLeads.push(item);
-          hasMissingLocal = true;
+        // 2. Preserve any local leads that are pending or not yet in Google Sheets (e.g. entered on another laptop while offline)
+        let hasMissingLocal = false;
+        const strandedLeads = [];
+        (state.orders || []).forEach(item => {
+          if (item && item.id && !orderMap.has(item.id) && item.clientName) {
+            orderMap.set(item.id, item);
+            strandedLeads.push(item);
+            hasMissingLocal = true;
+          }
+        });
+
+        const merged = Array.from(orderMap.values());
+        const cleaned = dedupeOrders(merged);
+        state.orders = cleaned;
+        try { localStorage.setItem(K_ORDERS, JSON.stringify(cleaned)); } catch(e) {}
+
+        // 3. If there were local leads that were missing from Google Sheets, immediately upload them!
+        if (hasMissingLocal && strandedLeads.length > 0) {
+          console.log(`Synchronizing ${strandedLeads.length} offline local leads to Google Sheets cloud...`);
+          await storageSet(K_ORDERS, cleaned);
         }
-      });
-
-      const merged = Array.from(orderMap.values());
-      const cleaned = dedupeOrders(merged);
-      state.orders = cleaned;
-      try { localStorage.setItem(K_ORDERS, JSON.stringify(cleaned)); } catch(e) {}
-
-      // 3. If there were local leads that were missing from Google Sheets, immediately upload them!
-      if (hasMissingLocal && strandedLeads.length > 0) {
-        console.log(`Synchronizing ${strandedLeads.length} offline local leads to Google Sheets cloud...`);
-        await storageSet(K_ORDERS, cleaned);
       }
       updated = true;
     }
