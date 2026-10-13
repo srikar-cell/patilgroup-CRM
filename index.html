@@ -802,14 +802,10 @@ function nextFollowUpFor(username){
 
 function dedupeOrders(arr) {
   if (!Array.isArray(arr)) return [];
-  const DUMMY_TEST_IDS = new Set(['mv4v25mfaheet', 'mv4vkoq1kibqd', 'mv4vybex5upya', 'mv4wc5ubfx134', 'mv4wnijvyn5xc']);
-  const DUMMY_CLIENT_NAMES = new Set(['slkdfl', ';asdl', 'alskflas', 'lkasld', 'alskdlk']);
   const seen = new Set();
   const result = [];
   for (const item of arr) {
     if (!item || typeof item !== 'object' || !item.clientName) continue;
-    if (DUMMY_TEST_IDS.has(item.id)) continue;
-    if (DUMMY_CLIENT_NAMES.has((item.clientName || '').trim().toLowerCase())) continue;
 
     const idKey = item.id ? 'id:' + item.id : null;
     if (idKey) {
@@ -2951,7 +2947,7 @@ async function saveOrder(){
     };
     const idx = state.orders.findIndex(o=>o.id===updated.id);
     if(idx>=0) state.orders[idx]=updated; else state.orders.push(updated);
-    await storageSet(K_ORDERS, state.orders);
+    try { localStorage.setItem(K_ORDERS, JSON.stringify(state.orders)); } catch(e) {}
 
     const nowLost = updated.dealStage.startsWith('10.');
     if(nowLost && !wasLost){
@@ -2963,10 +2959,11 @@ async function saveOrder(){
           estimatedValue: updated.estimatedValue, competitorWhoWon:'', rootCause: updated.reasonLostWon||'',
           improvementsRequired:'', actionOwner:'', targetDate:'', status:'Not started', notes:[]
         });
-        await storageSet(K_LOST, state.lostOrders);
+        storageSet(K_LOST, state.lostOrders);
       }
     }
     closeModal();
+    await storageSet(K_ORDERS, state.orders);
   } finally {
     state.isSavingOrder = false;
   }
@@ -3761,15 +3758,10 @@ async function init(){
     const a = localStorage.getItem(K_ACTIVITY);
     const s = localStorage.getItem(K_SESSION);
 
-    const DUMMY_TEST_IDS = new Set(['mv4v25mfaheet', 'mv4vkoq1kibqd', 'mv4vybex5upya', 'mv4wc5ubfx134', 'mv4wnijvyn5xc']);
-    const DUMMY_CLIENT_NAMES = new Set(['slkdfl', ';asdl', 'alskflas', 'lkasld', 'alskdlk']);
-
     if (o) {
       try {
         const parsedO = JSON.parse(o);
-        state.orders = Array.isArray(parsedO) ? parsedO.filter(item => 
-          item && !DUMMY_TEST_IDS.has(item.id) && !DUMMY_CLIENT_NAMES.has((item.clientName || '').trim().toLowerCase())
-        ) : [];
+        state.orders = Array.isArray(parsedO) ? parsedO.filter(item => item && item.clientName) : [];
       } catch(e) {
         state.orders = [];
       }
@@ -3826,35 +3818,69 @@ async function init(){
   state.loaded = true;
   render();
 
-  // Background Remote Sync to fetch centralized Google Sheet data
+  // Instant remote sync to fetch centralized Google Sheet data
   await backgroundRemoteSync();
 
-  // Multi-laptop continuous synchronization: poll Google Sheet every 25 seconds
+  // Multi-laptop continuous synchronization: poll Google Sheet every 15 seconds
   if (window.__cloudSyncTimer) clearInterval(window.__cloudSyncTimer);
   window.__cloudSyncTimer = setInterval(() => {
     backgroundRemoteSync(false);
-  }, 25000);
+  }, 15000);
+
+  // Instant sync whenever user switches to this window or tab
+  window.addEventListener('focus', () => { backgroundRemoteSync(false); });
+  document.addEventListener('visibilitychange', () => {
+    if (!document.hidden) backgroundRemoteSync(false);
+  });
 }
 
 async function backgroundRemoteSync(isManual = false){
   state.syncStatus = 'syncing';
   state.syncErrorMsg = '';
-  render();
 
   try {
-    const u = await storageGet(K_USERS);
-    await new Promise(r => setTimeout(r, 100));
+    let u, o, c, l, a;
+    let gotBatch = false;
 
-    const o = await storageGet(K_ORDERS);
-    await new Promise(r => setTimeout(r, 100));
+    // 1. Try single ultra-fast batch GET (action=get_all)
+    try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 8000);
+      const batchRes = await fetch(APPS_SCRIPT_URL + '?action=get_all', { redirect: 'follow', signal: controller.signal });
+      clearTimeout(timeoutId);
+      if (batchRes.ok) {
+        const text = await batchRes.text();
+        if (text && text.trim().startsWith('{')) {
+          const batchData = JSON.parse(text);
+          if (batchData && batchData.status === 'success' && batchData.orders !== undefined) {
+            u = batchData.users;
+            o = batchData.orders;
+            c = batchData.coordination;
+            l = batchData.lostOrders;
+            a = batchData.activity;
+            gotBatch = true;
+          }
+        }
+      }
+    } catch(bErr) {
+      // get_all not supported or timed out; fallback to parallel fetch
+    }
 
-    const c = await storageGet(K_COORD);
-    await new Promise(r => setTimeout(r, 100));
-
-    const l = await storageGet(K_LOST);
-    await new Promise(r => setTimeout(r, 100));
-
-    const a = await storageGet(K_ACTIVITY);
+    // 2. Parallel fallback: fetch all keys simultaneously with Promise.allSettled
+    if (!gotBatch) {
+      const results = await Promise.allSettled([
+        storageGet(K_USERS),
+        storageGet(K_ORDERS),
+        storageGet(K_COORD),
+        storageGet(K_LOST),
+        storageGet(K_ACTIVITY)
+      ]);
+      u = results[0].status === 'fulfilled' ? results[0].value : null;
+      o = results[1].status === 'fulfilled' ? results[1].value : null;
+      c = results[2].status === 'fulfilled' ? results[2].value : null;
+      l = results[3].status === 'fulfilled' ? results[3].value : null;
+      a = results[4].status === 'fulfilled' ? results[4].value : null;
+    }
 
     let updated = false;
 
@@ -3880,7 +3906,7 @@ async function backgroundRemoteSync(isManual = false){
 
     if (o && Array.isArray(o)) {
       const orderMap = new Map();
-      // 1. Seed with local state to preserve any pending newly created leads
+      // 1. Seed with local state to preserve any pending newly created leads on this laptop
       (state.orders || []).forEach(item => { if (item && item.id) orderMap.set(item.id, item); });
       // 2. Authoritative remote Google Sheets data overwrites local cache so admin always sees latest rep updates
       o.forEach(item => { if (item && item.id) orderMap.set(item.id, item); });
