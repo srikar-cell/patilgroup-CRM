@@ -896,7 +896,7 @@ async function pingActivity(){
     }catch(e){ /* offline or blocked — keep coordinates as label */ }
     state.activity[u.username] = { ...state.activity[u.username], lat:latitude, lng:longitude, locationLabel:label, lastSeen: Date.now() };
     await storageSet(K_ACTIVITY, state.activity);
-    if(state.currentUser && state.currentUser.username===u.username) render();
+    if(state.currentUser && state.currentUser.username===u.username) { if(!state.modal) render(); }
   }, ()=>{ /* permission denied or unavailable — location stays unset */ }, { timeout:8000, maximumAge:600000 });
 }
 function isRepActive(username){
@@ -1110,6 +1110,9 @@ function render(){
       app.innerHTML = renderLogin();
       setTimeout(initGoogleSignIn, 50);
       return;
+    }
+    if(state.modal && state.modal.type === 'order') {
+      try { syncModalFormInputs('f'); } catch(e) {}
     }
     app.innerHTML = renderShell();
     const showingSubNav = state.topTab==='mypage' || (state.topTab==='team' && !!state.viewingAsRep);
@@ -2698,12 +2701,12 @@ function renderOrderModal(){
   const curType = activeActionType(d);
   const productParts = (d.product||'').split(', ').filter(Boolean);
   const rawCatP = productParts.length ? productParts[0].split(' - ')[0] : '';
-  const dProductCategory = PRODUCTS.includes(rawCatP) ? rawCatP : PRODUCTS[0];
-  const dProductSubCategory = '';
+  const dProductCategory = d.selectedProductCategory || (PRODUCTS.includes(rawCatP) ? rawCatP : PRODUCTS[0]);
+  const dProductSubCategory = d.selectedProductSubCategory || '';
   const projectParts = (d.projectType||'').split(', ').filter(Boolean);
   const rawCatPr = projectParts.length ? projectParts[0].split(' - ')[0] : '';
-  const dProjectCategory = PROJECT_TYPES.includes(rawCatPr) ? rawCatPr : PROJECT_TYPES[0];
-  const dProjectSubCategory = '';
+  const dProjectCategory = d.selectedProjectCategory || (PROJECT_TYPES.includes(rawCatPr) ? rawCatPr : PROJECT_TYPES[0]);
+  const dProjectSubCategory = d.selectedProjectSubCategory || '';
 
   const existingProductTags = d.product ? d.product.split(', ').filter(Boolean) : [];
   const existingProjectTags = d.projectType ? d.projectType.split(', ').filter(Boolean) : [];
@@ -2788,7 +2791,7 @@ function renderOrderModal(){
         <div class="field"><label>Lead source type *</label><select id="f-leadSourceType" onchange="updateLeadSourceNames('f')">${LEAD_SOURCE.map(s=>`<option ${s===d.leadSourceType?'selected':''}>${s}</option>`).join('')}</select></div>
         <div class="field"><label>Lead source name</label>
           <select id="f-leadSourceName" onchange="onLeadSourceNameChange('f')">${(LEAD_SOURCES[d.leadSourceType]||LEAD_SOURCES['Inbound']).map(s=>`<option value="${s}" ${s===d.leadSourceName?'selected':''}>${s}</option>`).join('')}</select>
-          ${d.leadSourceName==='Physical Visit / Scouting' ? renderVisitTreeInline(d.leadSourceVisitPath||[]) : ''}
+          <div id="f-visitTreeContainer">${d.leadSourceName==='Physical Visit / Scouting' ? renderVisitTreeInline(d.leadSourceVisitPath||[]) : ''}</div>
         </div>
         <div class="field" id="f-leadSourceOtherWrapper" style="${d.leadSourceName==='Others' ? '' : 'display:none;'}">
           <label>Specify lead source *</label>
@@ -2921,6 +2924,16 @@ function syncModalFormInputs(prefix = 'f') {
   const ce = grabVal(prefix + '-clientEmail');
   if (ce !== null) d.clientEmail = ce;
 
+  const prodCat = grabVal(prefix + '-productCategory');
+  if (prodCat !== null) d.selectedProductCategory = prodCat;
+  const prodSub = grabVal(prefix + '-productSubCategory');
+  if (prodSub !== null) d.selectedProductSubCategory = prodSub;
+
+  const projCat = grabVal(prefix + '-projectCategory');
+  if (projCat !== null) d.selectedProjectCategory = projCat;
+  const projSub = grabVal(prefix + '-projectSubCategory');
+  if (projSub !== null) d.selectedProjectSubCategory = projSub;
+
   const f = id => document.getElementById(id) ? grabVal(id) : undefined;
   if(f(prefix + '-productFinal')!==undefined) d.product = f(prefix + '-productFinal');
   if(f(prefix + '-productOtherDesc')!==undefined) d.productOtherDesc = f(prefix + '-productOtherDesc');
@@ -2963,22 +2976,54 @@ function syncModalFormInputs(prefix = 'f') {
 
 function updateLeadSourceNames(prefix) {
   syncModalFormInputs(prefix);
-  const d = state.modal.data;
-  const type = document.getElementById(prefix+'-leadSourceType').value;
+  const d = state.modal ? state.modal.data : null;
+  if (!d) return;
+  const typeEl = document.getElementById(prefix+'-leadSourceType');
+  if (!typeEl) return;
+  const type = typeEl.value;
   const names = LEAD_SOURCES[type]||[];
   d.leadSourceType = type;
   d.leadSourceName = names[0] || '';
   d.leadSourceOther = '';
   d.leadSourceVisitPath = [];
-  render();
+
+  const nameSel = document.getElementById(prefix+'-leadSourceName');
+  if (nameSel) {
+    nameSel.innerHTML = names.map(s => `<option value="${esc(s)}" ${s===d.leadSourceName?'selected':''}>${esc(s)}</option>`).join('');
+  }
+  const otherWrap = document.getElementById(prefix+'-leadSourceOtherWrapper');
+  if (otherWrap) {
+    otherWrap.style.display = d.leadSourceName === 'Others' ? '' : 'none';
+  }
+  const otherInput = document.getElementById(prefix+'-leadSourceOther');
+  if (otherInput) otherInput.value = '';
+
+  const treeContainer = document.getElementById(prefix+'-visitTreeContainer');
+  if (treeContainer) {
+    treeContainer.innerHTML = d.leadSourceName === 'Physical Visit / Scouting' ? renderVisitTreeInline([]) : '';
+  }
 }
 function onLeadSourceNameChange(prefix){
   syncModalFormInputs(prefix);
-  const d = state.modal.data;
-  d.leadSourceName = document.getElementById(prefix+'-leadSourceName').value;
+  const d = state.modal ? state.modal.data : null;
+  if (!d) return;
+  const nameSel = document.getElementById(prefix+'-leadSourceName');
+  if (!nameSel) return;
+  d.leadSourceName = nameSel.value;
   d.leadSourceOther = '';
   d.leadSourceVisitPath = [];
-  render();
+
+  const otherWrap = document.getElementById(prefix+'-leadSourceOtherWrapper');
+  if (otherWrap) {
+    otherWrap.style.display = d.leadSourceName === 'Others' ? '' : 'none';
+  }
+  const otherInput = document.getElementById(prefix+'-leadSourceOther');
+  if (otherInput) otherInput.value = '';
+
+  const treeContainer = document.getElementById(prefix+'-visitTreeContainer');
+  if (treeContainer) {
+    treeContainer.innerHTML = d.leadSourceName === 'Physical Visit / Scouting' ? renderVisitTreeInline([]) : '';
+  }
 }
 /* Renders the Physical Visit / Scouting drill-down as a compact breadcrumb chain (">" separated
    selects) that sits right under the Lead source name field — no separate labelled cell. Each
@@ -3005,10 +3050,14 @@ function renderVisitTreeInline(path){
 }
 function updateVisitTreeLevel(level, value){
   syncModalFormInputs('f');
-  const d = state.modal.data;
+  const d = state.modal ? state.modal.data : null;
+  if (!d) return;
   d.leadSourceVisitPath = (d.leadSourceVisitPath||[]).slice(0, level);
   if(value) d.leadSourceVisitPath.push(value);
-  render();
+  const treeContainer = document.getElementById('f-visitTreeContainer');
+  if (treeContainer) {
+    treeContainer.innerHTML = renderVisitTreeInline(d.leadSourceVisitPath||[]);
+  }
 }
 /* True once `path` has walked PHYSICAL_VISIT_TREE all the way down to a leaf (no more children left to pick). */
 function isVisitTreeComplete(path){
@@ -4152,9 +4201,26 @@ async function init(){
   });
 }
 
+function updateSyncStatusUI(){
+  const btns = document.querySelectorAll('button[onclick*="backgroundRemoteSync"]');
+  btns.forEach(btn => {
+    const dot = btn.querySelector('span');
+    if (dot) {
+      dot.style.background = state.syncStatus==='error'?'#a63a2f':state.syncStatus==='syncing'?'#d65b28':'#2f6b47';
+    }
+    const label = state.syncStatus==='syncing'?'Syncing...':'Sync Cloud';
+    if (dot) {
+      btn.innerHTML = '';
+      btn.appendChild(dot);
+      btn.appendChild(document.createTextNode(' ' + label));
+    }
+  });
+}
+
 async function backgroundRemoteSync(isManual = false){
   state.syncStatus = 'syncing';
   state.syncErrorMsg = '';
+  updateSyncStatusUI();
 
   try {
     let u, o, c, l, a;
@@ -4254,12 +4320,22 @@ async function backgroundRemoteSync(isManual = false){
 
     state.syncStatus = 'synced';
     state.lastSyncTime = Date.now();
+    updateSyncStatusUI();
+    if (state.modal) {
+      if (isManual) alert('Cloud Sync Complete! All pipeline data is updated from Google Sheets.');
+      return;
+    }
     render();
     if (isManual) alert('Cloud Sync Complete! All pipeline data is updated from Google Sheets.');
   } catch(e) {
     console.error('backgroundRemoteSync error:', e);
     state.syncStatus = 'error';
     state.syncErrorMsg = e.message || 'Error syncing with Google Sheet';
+    updateSyncStatusUI();
+    if (state.modal) {
+      if (isManual) alert('Sync Error: ' + state.syncErrorMsg);
+      return;
+    }
     render();
     if (isManual) alert('Sync Error: ' + state.syncErrorMsg);
   }
