@@ -13,7 +13,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js" defer></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/chartjs-plugin-datalabels/2.2.0/chartjs-plugin-datalabels.min.js" defer></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js" defer></script>
-<script src="https://accounts.google.com/gsi/client" async defer></script>
+<script src="https://accounts.google.com/gsi/client" async defer onload="initGoogleSignIn()"></script>
 <style>
   :root{
     --bg:#ffffff; --card:#ffffff; --border:#e2e8f0; --border-strong:#cbd5e1;
@@ -285,7 +285,10 @@ input[type="number"]{ -moz-appearance:textfield; appearance:textfield; }
         <p class="sub mono" style="letter-spacing:.03em;margin-bottom:20px;">Use your @patilgroup.com Google Account</p>
         <div style="display:flex;justify-content:center;margin:16px 0;">
           <div id="google-signin-btn" style="min-height:44px;display:flex;align-items:center;justify-content:center;">
-            <span style="font-size:13px;color:var(--muted);">Loading Google Sign-in...</span>
+            <div class="google-btn-native" onclick="triggerGoogleSignIn()" style="display:flex;align-items:center;justify-content:center;gap:10px;width:300px;height:42px;border:1px solid #dadce0;border-radius:4px;background:#ffffff;cursor:pointer;font-family:'Inter',sans-serif;font-size:14px;font-weight:500;color:#3c4043;box-shadow:0 1px 2px rgba(60,64,67,0.08);user-select:none;">
+              <svg width="18" height="18" viewBox="0 0 18 18"><path fill="#4285F4" d="M17.64 9.2c0-.637-.057-1.251-.164-1.84H9v3.481h4.844c-.209 1.125-.843 2.078-1.796 2.717v2.258h2.908c1.702-1.567 2.684-3.874 2.684-6.616z"/><path fill="#34A853" d="M9 18c2.43 0 4.467-.806 5.956-2.184l-2.908-2.258c-.806.54-1.837.86-3.048.86-2.344 0-4.328-1.584-5.036-3.711H.957v2.332A8.997 8.997 0 0 0 9 18z"/><path fill="#FBBC05" d="M3.964 10.707c-.18-.54-.282-1.117-.282-1.707s.102-1.167.282-1.707V4.961H.957A8.996 8.996 0 0 0 0 9c0 1.452.348 2.827.957 4.039l3.007-2.332z"/><path fill="#EA4335" d="M9 3.58c1.321 0 2.508.454 3.44 1.345l2.582-2.58C13.463.891 11.426 0 9 0A8.997 8.997 0 0 0 .957 4.961L3.964 7.293C4.672 5.166 6.656 3.58 9 3.58z"/></svg>
+              <span>Sign in with Google</span>
+            </div>
           </div>
         </div>
       </div>
@@ -1017,11 +1020,27 @@ function render(){
 }
 
 let gsiRetryCount = 0;
-function initGoogleSignIn(){
+function triggerGoogleSignIn(){
+  if (window.google && google.accounts && google.accounts.id) {
+    try {
+      google.accounts.id.initialize({
+        client_id: GOOGLE_CLIENT_ID,
+        callback: handleGoogleCredentialResponse,
+        auto_select: false
+      });
+      google.accounts.id.prompt();
+    } catch(e) {
+      console.warn('triggerGoogleSignIn prompt error:', e);
+    }
+  } else {
+    initGoogleSignIn(true);
+  }
+}
+
+function initGoogleSignIn(forcePrompt = false){
   const btnContainer = document.getElementById('google-signin-btn');
   if(!btnContainer) return;
   if (window.google && google.accounts && google.accounts.id) {
-    btnContainer.innerHTML = '';
     try {
       google.accounts.id.initialize({
         client_id: GOOGLE_CLIENT_ID,
@@ -1032,9 +1051,11 @@ function initGoogleSignIn(){
         btnContainer,
         { theme: 'outline', size: 'large', width: 300, text: 'signin_with', logo_alignment: 'center' }
       );
+      if (forcePrompt) {
+        google.accounts.id.prompt();
+      }
     } catch(err) {
       console.error('Google Sign-in render error:', err);
-      btnContainer.innerHTML = `<button class="btn btn-primary" onclick="initGoogleSignIn()" style="width:300px;">Retry Google Sign-In</button>`;
     }
   } else {
     gsiRetryCount++;
@@ -1044,17 +1065,10 @@ function initGoogleSignIn(){
       s.src = 'https://accounts.google.com/gsi/client';
       s.async = true;
       s.defer = true;
-      s.onload = () => initGoogleSignIn();
+      s.onload = () => initGoogleSignIn(forcePrompt);
       document.head.appendChild(s);
     }
-    if (gsiRetryCount > 40) {
-      btnContainer.innerHTML = `
-        <div style="display:flex;flex-direction:column;gap:8px;align-items:center;">
-          <span style="font-size:12px;color:var(--hazard-text);">Google Sign-In is connecting...</span>
-          <button class="btn btn-primary" onclick="location.reload()" style="padding:6px 14px;font-size:12px;">Reload Page</button>
-        </div>`;
-    }
-    setTimeout(initGoogleSignIn, 150);
+    setTimeout(() => initGoogleSignIn(forcePrompt), 150);
   }
 }
 
@@ -1177,7 +1191,10 @@ function renderLogin(){
 
         <div style="display:flex;justify-content:center;margin:16px 0;">
           <div id="google-signin-btn" style="min-height:44px;display:flex;align-items:center;justify-content:center;">
-            <span style="font-size:13px;color:var(--muted);">Loading Google Sign-in...</span>
+            <div class="google-btn-native" onclick="triggerGoogleSignIn()" style="display:flex;align-items:center;justify-content:center;gap:10px;width:300px;height:42px;border:1px solid #dadce0;border-radius:4px;background:#ffffff;cursor:pointer;font-family:'Inter',sans-serif;font-size:14px;font-weight:500;color:#3c4043;box-shadow:0 1px 2px rgba(60,64,67,0.08);user-select:none;">
+              <svg width="18" height="18" viewBox="0 0 18 18"><path fill="#4285F4" d="M17.64 9.2c0-.637-.057-1.251-.164-1.84H9v3.481h4.844c-.209 1.125-.843 2.078-1.796 2.717v2.258h2.908c1.702-1.567 2.684-3.874 2.684-6.616z"/><path fill="#34A853" d="M9 18c2.43 0 4.467-.806 5.956-2.184l-2.908-2.258c-.806.54-1.837.86-3.048.86-2.344 0-4.328-1.584-5.036-3.711H.957v2.332A8.997 8.997 0 0 0 9 18z"/><path fill="#FBBC05" d="M3.964 10.707c-.18-.54-.282-1.117-.282-1.707s.102-1.167.282-1.707V4.961H.957A8.996 8.996 0 0 0 0 9c0 1.452.348 2.827.957 4.039l3.007-2.332z"/><path fill="#EA4335" d="M9 3.58c1.321 0 2.508.454 3.44 1.345l2.582-2.58C13.463.891 11.426 0 9 0A8.997 8.997 0 0 0 .957 4.961L3.964 7.293C4.672 5.166 6.656 3.58 9 3.58z"/></svg>
+              <span>Sign in with Google</span>
+            </div>
           </div>
         </div>
       </div>
