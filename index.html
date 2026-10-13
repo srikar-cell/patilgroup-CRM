@@ -10,9 +10,9 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Barlow+Semi+Condensed:wght@500;600;700&family=Inter:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
-<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/chartjs-plugin-datalabels/2.2.0/chartjs-plugin-datalabels.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js" defer></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/chartjs-plugin-datalabels/2.2.0/chartjs-plugin-datalabels.min.js" defer></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js" defer></script>
 <script src="https://accounts.google.com/gsi/client" async defer></script>
 <style>
   :root{
@@ -272,7 +272,26 @@ input[type="number"]{ -moz-appearance:textfield; appearance:textfield; }
 </style>
 </head>
 <body>
-<div id="app"></div>
+<div id="app">
+  <div class="login-wrap">
+    <div class="login-front">
+      <div class="login-hero-brand">
+        <img src="https://patilgroup.com/pg.png" alt="Patil Group" onerror="this.style.display='none';">
+        <h2>Patil Group</h2>
+        <p>Pipeline control — B2B infrastructure sales tracker</p>
+      </div>
+      <div class="login-card" style="text-align:center;">
+        <h1 style="margin-bottom:6px;">Sign in</h1>
+        <p class="sub mono" style="letter-spacing:.03em;margin-bottom:20px;">Use your @patilgroup.com Google Account</p>
+        <div style="display:flex;justify-content:center;margin:16px 0;">
+          <div id="google-signin-btn" style="min-height:44px;display:flex;align-items:center;justify-content:center;">
+            <span style="font-size:13px;color:var(--muted);">Loading Google Sign-in...</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
 
 <script>
 /* ================= STORAGE ================= */
