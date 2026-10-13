@@ -997,22 +997,44 @@ function render(){
   if(scrollY) window.scrollTo(0, scrollY);
 }
 
-/* ================= GOOGLE AUTHENTICATION ================= */
+let gsiRetryCount = 0;
 function initGoogleSignIn(){
   const btnContainer = document.getElementById('google-signin-btn');
   if(!btnContainer) return;
   if (window.google && google.accounts && google.accounts.id) {
     btnContainer.innerHTML = '';
-    google.accounts.id.initialize({
-      client_id: GOOGLE_CLIENT_ID,
-      callback: handleGoogleCredentialResponse,
-      auto_select: false
-    });
-    google.accounts.id.renderButton(
-      btnContainer,
-      { theme: 'outline', size: 'large', width: 300, text: 'signin_with', logo_alignment: 'center' }
-    );
+    try {
+      google.accounts.id.initialize({
+        client_id: GOOGLE_CLIENT_ID,
+        callback: handleGoogleCredentialResponse,
+        auto_select: false
+      });
+      google.accounts.id.renderButton(
+        btnContainer,
+        { theme: 'outline', size: 'large', width: 300, text: 'signin_with', logo_alignment: 'center' }
+      );
+    } catch(err) {
+      console.error('Google Sign-in render error:', err);
+      btnContainer.innerHTML = `<button class="btn btn-primary" onclick="initGoogleSignIn()" style="width:300px;">Retry Google Sign-In</button>`;
+    }
   } else {
+    gsiRetryCount++;
+    if (gsiRetryCount > 20 && !document.getElementById('gsi-script-fallback')) {
+      const s = document.createElement('script');
+      s.id = 'gsi-script-fallback';
+      s.src = 'https://accounts.google.com/gsi/client';
+      s.async = true;
+      s.defer = true;
+      s.onload = () => initGoogleSignIn();
+      document.head.appendChild(s);
+    }
+    if (gsiRetryCount > 40) {
+      btnContainer.innerHTML = `
+        <div style="display:flex;flex-direction:column;gap:8px;align-items:center;">
+          <span style="font-size:12px;color:var(--hazard-text);">Google Sign-In is connecting...</span>
+          <button class="btn btn-primary" onclick="location.reload()" style="padding:6px 14px;font-size:12px;">Reload Page</button>
+        </div>`;
+    }
     setTimeout(initGoogleSignIn, 150);
   }
 }
@@ -1135,7 +1157,9 @@ function renderLogin(){
         ${state.loginError ? `<div class="login-error" style="text-align:left;margin-bottom:16px;">${esc(state.loginError)}</div>` : ''}
 
         <div style="display:flex;justify-content:center;margin:16px 0;">
-          <div id="google-signin-btn"></div>
+          <div id="google-signin-btn" style="min-height:44px;display:flex;align-items:center;justify-content:center;">
+            <span style="font-size:13px;color:var(--muted);">Loading Google Sign-in...</span>
+          </div>
         </div>
       </div>
     </div>
